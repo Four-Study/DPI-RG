@@ -9,6 +9,8 @@ import math
 import itertools
 
 import torch
+import torch.nn as nn
+import torchvision
 from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 import torch.nn.functional as F
@@ -292,8 +294,78 @@ def train_al(netG_A2B, netG_B2A, netD_A, optimizer_D_A, optimizer_G, trainset_A,
         lr_scheduler_G.step()
         lr_scheduler_D_A.step()
         
+def get_p_and_fake_C_fmnist(net, miss, testset_A, batch_size, nz, 
+                            present_label, all_label, empiricals, chi=True):
+    device = empiricals[0].device
+    const = nz ** (1/2)
+    p_vals_classes = []
+    probs_classes = []
+    all_fake_Cs = []
+    for lab in all_label:    
 
+        # fake_Cs for this class
+
+        if torch.is_tensor(testset_A.targets):
+            idxs_2 = torch.where(testset_A.targets == lab)[0] 
+        else:
+            idxs_2 = torch.where(torch.Tensor(testset_A.targets) == lab)[0] 
+        test_data2 = torch.utils.data.Subset(testset_A, idxs_2)
+        test_loader2  = DataLoader(test_data2, batch_size=batch_size, shuffle=False)
+
+        # p_vals_class and fake_Cs store p-values, fake_Cs for each class 
+        p_vals_class = torch.zeros(len(present_label), len(idxs_2)) 
+        probs_class = torch.zeros(len(present_label), len(idxs_2)) 
+        fake_Cs = torch.zeros(len(present_label), len(idxs_2))
+
+        for pidx in range(len(present_label)):
+            em_len = len(empiricals[pidx])
+            if net == 'resnet18':
+                netG_A2B  = models.resnet18(pretrained=False, num_classes=nz)
+                netG_A2B.conv1   = nn.Conv2d(1, netG_A2B.conv1.weight.shape[0], 3, 1, 1, bias=False) 
+                netG_A2B.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+                netG_A2B = netG_A2B.to(device)
+                netG_A2B = nn.DataParallel(netG_A2B)
+            elif net == 'resnet34': 
+                netG_A2B  = models.resnet34(pretrained=False, num_classes=nz)
+                netG_A2B.conv1   = nn.Conv2d(1, netG_A2B.conv1.weight.shape[0], 3, 1, 1, bias=False) 
+                netG_A2B.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+                netG_A2B = netG_A2B.to(device)
+                netG_A2B = nn.DataParallel(netG_A2B)
+            elif net == 'vgg16':
+                netG_A2B  = VGG16(ngpu, 1, nz).to(device)
+            model_save_file = 'models/' + str(net) + '_OOD' + str(miss) + '_class' + str(present_label[pidx]) + '.pt'
+            netG_A2B.load_state_dict(torch.load(model_save_file))
+
+            for i, batch in enumerate(test_loader2):
+                real_A, _ = batch
+                fake_B = netG_A2B(real_A.to(device))
+                if chi:
+                    fake_C = (torch.sum(torch.square(fake_B), 1) - nz) / (2 * nz) ** 0.5
+                else:
+                    fake_C = torch.mul(torch.mean(fake_B, 1), const)
+                    
+                # compute p-value for each sample
+                for j in range(len(fake_C)):
+                    p1 = torch.sum(empiricals[pidx] > fake_C[j]) / em_len
+#                     p2 = torch.sum(fake_C[j] < empiricals[pidx]) / em_len
+#                     p = 2 * torch.min(p1, p2)
+                    p = p1
+                    # calculate the p-value and put it in the corresponding list
+                    p_vals_class[pidx, i * batch_size + j] = p.item()
+                    fake_Cs[pidx, i * batch_size + j] = fake_C[j].item()
         
+        for i in range(len(idxs_2)):
+            probs_class[:, i] = p_vals_class[:, i] / torch.sum(p_vals_class[:, i])
+
+        p_vals_classes.append(np.array(p_vals_class))
+        probs_classes.append(np.array(probs_class))
+        # concatenate torch data
+        all_fake_Cs.append(np.array(fake_Cs))
+#         print('Finished Label {}'.format(lab))
+    
+    return (p_vals_classes, probs_classes, all_fake_Cs)
+
+
 def get_p_and_fake_C(net, miss, testset_A, batch_size, nz, 
                      present_label, all_label, empiricals, chi=True):
     device = empiricals[0].device

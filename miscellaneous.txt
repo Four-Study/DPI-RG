@@ -156,3 +156,20 @@ plt.axis("off")
 sample = A.data[:16, :, :].float().reshape([16, 1, 28, 28])
 plt.imshow(np.transpose(vutils.make_grid(sample, nrow = 4, padding = 0, normalize=True),(1, 2, 0)))
 plt.savefig('samples.pdf', dpi = 150)
+
+
+## calculate the output size
+import torch
+import torch.nn as nn
+
+def summary(model, input_size):
+    print("Layer Name", "\t", "Output Shape")
+    print("=" * 30)
+    
+    with torch.no_grad():
+        x = torch.zeros(1, *input_size)
+        for name, layer in model.named_modules():
+            if isinstance(layer, (nn.ReLU, nn.ReLU6, nn.LeakyReLU, nn.PReLU, nn.ELU, nn.SELU)):
+                continue
+            x = layer(x)
+            print(f"{name}\t {x.shape}")
