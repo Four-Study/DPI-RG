@@ -34,7 +34,7 @@ import numpy as np
 import argparse
 
 # hyper-parameters
-parser              = argparse.ArgumentParser(description='FCI CIFAR10 Training')
+parser              = argparse.ArgumentParser(description='FPI CIFAR10 Training')
 parser.add_argument('--net', default='resnet18', type=str, choices=['resnet18', 'resnet34', 'vgg16'], help='network')
 parser.add_argument('--n_rep', default=5, type=int, help='number of repetitions')
 parser.add_argument('--miss', default=0, type=int, choices=[0, 5, 10], help='missing rate')
@@ -243,36 +243,32 @@ for rep in range(args.n_rep):
     ## get p-values and fake C numbers, visualize them
     p_vals_classes, probs_classes, all_fake_Cs = get_p_and_fake_C(args.net, args.miss, testset_A, 512, nz, 
                                                                   present_label, all_label, empiricals, chi)
-    top1 = torch.zeros(len(all_label))
-    top3 = torch.zeros(len(all_label))
+    
     cover_acc = torch.zeros(len(all_label))
     avg_error = torch.zeros(len(all_label))
     for i, lab in enumerate(all_label):
         p_vals_class = p_vals_classes[i]
         n = p_vals_class.shape[1]
-        correct = 0.0
-        correct3 = 0.0
         cover = 0.0
         error = 0.0
         for j in range(n):
-            pred = np.array(all_label)[np.argmax(p_vals_class[:, j])]
-            p_set = np.array(all_label)[np.where(p_vals_class[:, j] > 0.05)[0]]
+            ## sort the p value list and get the corresponding indicies
+            sorted = -np.sort(-p_vals_class[:, j])
+            indicies = np.argsort(-p_vals_class[:, j])
+            if sorted[0] == 0:
+                p_set = np.array([])
+            else:
+                ## find the minimum index when the coverage first exceeds 1-alpha
+                idx = np.argmax(np.cumsum(sorted) / np.sum(sorted) > 0.95)
+                p_set = indicies[:idx + 1]
             if lab in missing_label:
                 error += len(p_set)
                 if len(p_set) == 0:
-                    correct += 1
-                    correct3 += 1
                     cover += 1
             else:
                 error += abs(len(p_set) - 1)
-                if lab == pred:
-                    correct += 1
                 if lab in p_set:
                     cover += 1
-                if lab in np.argsort(-p_vals_class[:, j])[:3]:
-                    correct3 += 1
-        top1[i] = correct / n
-        top3[i] = correct3 / n
         cover_acc[i] = cover / n
         avg_error[i] = error / n
     print('rep =', rep + 1)
@@ -281,12 +277,11 @@ for rep in range(args.n_rep):
     cover_accs.append(cover_acc)
     avg_errors.append(avg_error)
 
-
 res = (cover_accs, avg_errors)
 
 import pickle
 
-file_name = 'FCI_' + args.net + '_cifar10_OOD' + str(args.miss) + '.pkl'
+file_name = 'FPI_' + args.net + '_cifar10_OOD' + str(args.miss) + '.pkl'
 with open(file_name, 'wb') as out:
     pickle.dump(res, out)
 

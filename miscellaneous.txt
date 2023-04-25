@@ -132,7 +132,7 @@ for i in range(len(all_label)):
     p_vals_class = p_vals_classes[all_label[i]]
     axs[i, 0].set_ylabel(classes[all_label[i]], fontsize = 25)
     for j in range(len(present_label)):
-
+v
         axs[i, j].set_xlim([0, 1])
         _ = axs[i, j].hist(p_vals_class[present_label[j], :])
         prop = np.sum(np.array(p_vals_class[present_label[j], :] <= 0.05) / len(p_vals_class[present_label[j], :]))
