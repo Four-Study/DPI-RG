@@ -1,37 +1,32 @@
 # ConvTranspose2d
 x <- 1
-n.layers1 <- 7
-# in the order of k, s, p
-k <- 4
-s <- 2
-p <- 1
-
-k <- 4
-s <- 1
-p <- 0
-
-for (i in 1:n.layers) {
+layers <- c(4,1,0,
+            4,2,1,
+            4,2,1,
+            4,2,3)
+layers <- matrix(layers, ncol = 3, byrow = TRUE)
+for (i in 1:nrow(layers)) {
+  k <- layers[i,1]
+  s <- layers[i,2]
+  p <- layers[i,3]
   x <- (x - 1) * s - 2*p + k
+  print(x)
 }
+
 
 
 
 # Conv2d
 x <- 32
-n.layers2 <- 7
-# in the order of k, s, p
-p.vec <- c(4, 1, 0)
-p.matrix <- matrix(p.vec, nrow = n.layers2, ncol = 3)
-
-for (i in 1:n.layers) {
+layers <- c(4,1,0,
+            4,2,1,
+            4,2,1,
+            4,4,2)
+layers <- matrix(layers, ncol = 3, byrow = TRUE)
+for (i in 1:nrow(layers)) {
+  k <- layers[i,1]
+  s <- layers[i,2]
+  p <- layers[i,3]
   x <- ceiling((x + 2 * p - k) / s) + 1
+  print(x)
 }
-
-
-x <- 32
-
-k <- 4
-s <- 2
-p <- 1
-
-x <- ceiling((x + 2 * p - k) / s) + 1

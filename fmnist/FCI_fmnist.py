@@ -16,12 +16,13 @@ import torchvision.models as models
 from torch import optim
 from torch.utils.data import DataLoader
 
-from models_cifar10 import GeneratorA2B
-from models_cifar10 import GeneratorB2A
-from models_cifar10 import DiscriminatorA
+from models import GeneratorA2B
+from models import GeneratorB2A
+from models import DiscriminatorA
+from models import VGG16
 
 from utils import train_al
-from utils import get_p_and_fake_C
+from utils import get_p_and_fake_C_fmnist
 from utils import weights_init_normal
 from utils import weights_init
 from utils import LambdaLR
@@ -34,7 +35,7 @@ import numpy as np
 import argparse
 
 # hyper-parameters
-parser              = argparse.ArgumentParser(description='FCI CIFAR10 Training')
+parser              = argparse.ArgumentParser(description='FCI Fashion-MNIST Training')
 parser.add_argument('--net', default='resnet18', type=str, choices=['resnet18', 'resnet34', 'vgg16'], help='network')
 parser.add_argument('--n_rep', default=5, type=int, help='number of repetitions')
 parser.add_argument('--miss', default=0, type=int, choices=[0, 5, 10], help='missing rate')
@@ -43,46 +44,38 @@ args                = parser.parse_args()
 
 chi                 = True
 start_epoch         = 1
-n_epochs1           = 100
-n_epochs2           = 121
-batch_size          = 200
-if args.net == 'vgg16':
-    lr_G                = 0.001
-    lr_D                = 0.0001
-else:
-    lr_G                = 0.002
-    lr_D                = 0.002
+# n_epochs1           = 2
+# n_epochs2           = 3
+n_epochs1           = 125
+n_epochs2           = 175
+batch_size          = 512
+lr_G                = 0.0002
+lr_D                = 0.0002
 momentum            = 0.9
 weight_decay        = 5e-4
 ## coefficients for GAN X2Z, GAN Z2X, X cycle, and Z cycle
-lams                = [7.0, 1.0, 5.0, 5.0, 3.0] 
+lams                = [1.0, 3.0, 5.0, 5.0, 0.8]
 # decay_epoch         = n_epochs//2
 decay_epoch2        = n_epochs2//2
 lambda_lr           = lambda epoch: 0.5 ** (epoch // 20)
-if args.net == 'vgg16':
-    ngf                 = 32
-else:
-    ngf                 = 48
-ndf                 = 32
-im_size             = 64
+ngf                 = 128
+ndf                 = 128
+im_size             = 28
 nz                  = args.nz
-nc                  = 3
+nc                  = 1
 ngpu                = torch.cuda.device_count()
 cuda                = torch.cuda.is_available()
 device              = torch.device("cuda" if cuda else "cpu")
 display             = 300
 
 # dataset
-transform = transforms.Compose([transforms.ToTensor(),
-                                transforms.Resize(im_size),
-                                transforms.RandomHorizontalFlip(),
-#                                 transforms.RandomCrop(im_size, im_size // 4),
-                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-trainset_A    = torchvision.datasets.CIFAR10(root="../datasets",train=True, transform=transform, download=True)
-testset_A     = torchvision.datasets.CIFAR10(root="../datasets",train=False, transform=transform, download=True)
+transform     = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize((0.5,), (0.5,))])
+trainset_A    = torchvision.datasets.FashionMNIST(root="../datasets",train=True, transform=transform, download=True)
+testset_A     = torchvision.datasets.FashionMNIST(root="../datasets",train=False, transform=transform, download=True)
 
 if args.miss > 0:
-    missing_label = [7]
+    missing_label = [9]
     present_label = [x for x in range(10) if x not in missing_label]
 else:
     missing_label = []
@@ -114,24 +107,24 @@ for rep in range(args.n_rep):
     train_graphs_more = []
     empiricals = []
     for lab in present_label:
-#         if lab in [4, 7, 8]:
-#             lams = [7.0, 1.0, 5.0, 5.0, 0.8] 
-#         else: 
-#             lams = [7.0, 1.0, 5.0, 5.0, 1.0] 
         ## Create nets for each class
-        
         if args.net == 'resnet18':
             netG_A2B  = models.resnet18(pretrained=False, num_classes=nz)
+            netG_A2B.conv1   = nn.Conv2d(nc, netG_A2B.conv1.weight.shape[0], 3, 1, 1, bias=False) 
+            netG_A2B.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+            netG_A2B = netG_A2B.to(device)
+            netG_A2B = nn.DataParallel(netG_A2B)
         elif args.net == 'resnet34': 
             netG_A2B  = models.resnet34(pretrained=False, num_classes=nz)
+            netG_A2B.conv1   = nn.Conv2d(nc, netG_A2B.conv1.weight.shape[0], 3, 1, 1, bias=False) 
+            netG_A2B.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+            netG_A2B = netG_A2B.to(device)
+            netG_A2B = nn.DataParallel(netG_A2B)
         elif args.net == 'vgg16':
-            netG_A2B  = models.vgg16(pretrained=False, num_classes=nz)
-        netG_A2B = netG_A2B.to(device)
-        netG_A2B = nn.DataParallel(netG_A2B)
-        netG_B2A = GeneratorB2A(nc, nz, ngf).to(device)
-        netG_B2A = nn.DataParallel(netG_B2A)
-        netD_A = DiscriminatorA(nc, ndf).to(device)
-        netD_A = nn.DataParallel(netD_A)
+            netG_A2B  = VGG16(ngpu, nc, nz).to(device)
+        
+        netG_B2A = GeneratorB2A(ngpu, nc, nz, ngf).to(device)
+        netD_A = DiscriminatorA(ngpu, nc, ndf).to(device)
     #     netG_A2B.apply(weights_init)
         netG_B2A.apply(weights_init)
         netD_A.apply(weights_init)
@@ -241,8 +234,8 @@ for rep in range(args.n_rep):
 
 
     ## get p-values and fake C numbers, visualize them
-    p_vals_classes, probs_classes, all_fake_Cs = get_p_and_fake_C(args.net, args.miss, testset_A, 512, nz, 
-                                                                  present_label, all_label, empiricals, chi)
+    p_vals_classes, probs_classes, all_fake_Cs = get_p_and_fake_C_fmnist(args.net, args.miss, testset_A, 512, nz, 
+                                                                         present_label, all_label, empiricals, chi)
     
     cover_acc = torch.zeros(len(all_label))
     avg_error = torch.zeros(len(all_label))
@@ -277,11 +270,12 @@ for rep in range(args.n_rep):
     cover_accs.append(cover_acc)
     avg_errors.append(avg_error)
 
+
 res = (cover_accs, avg_errors)
 
 import pickle
 
-file_name = 'FCI_' + args.net + '_cifar10_OOD' + str(args.miss) + '.pkl'
+file_name = 'FCI_' + args.net + '_fmnist_OOD' + str(args.miss) + '.pkl'
 with open(file_name, 'wb') as out:
     pickle.dump(res, out)
 
