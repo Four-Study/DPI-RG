@@ -101,7 +101,7 @@ class graphs:
 # saving results
 
 cover_accs = []
-avg_errors = []
+avg_sizes = []
 
 for rep in range(args.n_rep):
     train_graphs_more = []
@@ -238,7 +238,7 @@ for rep in range(args.n_rep):
                                                                          present_label, all_label, empiricals, chi)
     
     cover_acc = torch.zeros(len(all_label))
-    avg_error = torch.zeros(len(all_label))
+    avg_size  = torch.zeros(len(all_label))
     for i, lab in enumerate(all_label):
         p_vals_class = p_vals_classes[i]
         n = p_vals_class.shape[1]
@@ -254,24 +254,22 @@ for rep in range(args.n_rep):
                 ## find the minimum index when the coverage first exceeds 1-alpha
                 idx = np.argmax(np.cumsum(sorted) / np.sum(sorted) > 0.95)
                 p_set = indicies[:idx + 1]
+            size += len(p_set)
             if lab in missing_label:
-                error += len(p_set)
                 if len(p_set) == 0:
                     cover += 1
             else:
-                error += abs(len(p_set) - 1)
                 if lab in p_set:
                     cover += 1
         cover_acc[i] = cover / n
-        avg_error[i] = error / n
+        avg_size[i] = size / n
     print('rep =', rep + 1)
     print(cover_acc)
-    print(avg_error)
+    print(avg_size)
     cover_accs.append(cover_acc)
-    avg_errors.append(avg_error)
+    avg_sizes.append(avg_size)
 
-
-res = (cover_accs, avg_errors)
+res = (cover_accs, avg_sizes)
 
 import pickle
 
