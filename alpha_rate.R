@@ -1,34 +1,41 @@
 prob <- function(alpha, n, d = 5, eps = 0.1) {
   ## component 1
-  c1 <- log(1 - 2*exp(-2*n^(1-2*alpha)*eps^2))
-  if(is.na(c1)) {
-    warning("c1: Increase n or decrease alpha.")
-    return(0)
-  }
+  # c1 <- log(1 - 2*exp(-2*n^(1-2*alpha)*eps^2))
+  c1 <- max(0, 1 - 2*exp(-2*n^(1-2*alpha)*eps^2))
+  # if(is.na(c1)) {
+  #   warning("c1: Increase n or decrease alpha.")
+  #   return(0)
+  # }
   ## component 2
-  c2 <- n*log(1 - 2*exp(-n^(2*alpha)/(2*d^2)))
-  if(is.na(c2)) {
-    warning("c2: Increase n or alpha.")
-    return(0)
-  }
-  return(exp(c1 + c2))
+  # c2 <- n*log(1 - 2*exp(-n^(2*alpha)/(2*d^2)))
+  c2 <- max(0, (1 - 2*exp(-n^(2*alpha)/(2*d^2)))^n)
+  # if(is.na(c2)) {
+  #   warning("c2: Increase n or alpha.")
+  #   return(0)
+  # }
+  # print(exp(c1))
+  # print(exp(c2))
+  return(c(c1, c2))
 }
 ## test
-# prob(alpha=0.2, n=1e8)
+a <- prob(alpha=0.3, n=5e10)
 
-trials <- c(2e4, 1e5, 1e6, 1e8, 1e12, 1e20)
+# trials <- c(2e4, 1e5, 1e6, 1e8, 1e12, 1e20)
+trials <- c(2e5)
 alphas <- seq(1e-6, 0.5-1e-6, 0.002)
-probs <- rep(0, length(alphas))
+# probs <- rep(NA, length(alphas))
+c1s <- c2s <- rep(NA, length(alphas))
+
 for (i in 1:length(trials)) {
   for (j in 1:length(probs)) {
-    probs[j] <- prob(alpha = alphas[j], n = trials[i])
+    res <- prob(alpha = alphas[j], n = trials[i])
+    c1s[j] <- res[1]
+    c2s[j] <- res[2]
   }
-  if (i == 1)
-    plot(alphas, probs, type = "l", ylim = c(0, 1))
-  else
-    lines(alphas, probs, col = i)
+    plot(alphas, c1s, type = "l", ylim = c(0, 1), lwd = 2)
+    lines(alphas, c2s, col = "red", lwd = 2)
 }
-legend("topright", as.character(trials), col = 1:length(trials), lty = 1)
+legend("topright", c("c1", "c2"), col = c("black", "red"), lty = 1, lwd = 2)
 
 trials <- exp(seq(10, log(1e8), 0.1))
 alphas <- seq(0.1, 0.4, length.out = 7)
