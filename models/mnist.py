@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 torch.manual_seed(1)
 DIM_MNIST = 128
-Z_DIM_MNIST = 4
+Z_DIM_MNIST = 8
 Z_OUTPUT_DIM_MNIST = 784
 
 class I_MNIST(nn.Module):
@@ -84,18 +84,18 @@ class D_MNIST(nn.Module):
         out = self.output(out)
         return out.view(-1)
 
-class Class_MNIST(nn.Module):
-    def __init__(self):
-        super(Class_MNIST, self).__init__()
-        main = nn.Sequential(
-            nn.Linear(Z_DIM_MNIST, 200),
-            nn.ReLU(True),
-        )
-        self.main = main
-        self.output = nn.Linear(200, 10)
+# class Class_MNIST(nn.Module):
+#     def __init__(self):
+#         super(Class_MNIST, self).__init__()
+#         main = nn.Sequential(
+#             nn.Linear(Z_DIM_MNIST, 200),
+#             nn.ReLU(True),
+#         )
+#         self.main = main
+#         self.output = nn.Linear(200, 10)
 
-    def forward(self, input):
-        out = self.main(input)
-        out = self.output(out)
-        out = F.log_softmax(out, dim=1)
-        return out
+#     def forward(self, input):
+#         out = self.main(input)
+#         out = self.output(out)
+#         out = F.log_softmax(out, dim=1)
+#         return out

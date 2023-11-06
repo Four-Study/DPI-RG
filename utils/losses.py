@@ -52,7 +52,7 @@ def primal_z(netG, real_data, z_sample, p=2):
     fake_data = netG(z_sample)
     n_dim = len(post_data.shape)
     dim = list(range(1, n_dim))
-    l2 = torch.sqrt(torchu.sum((real_data-fake_data)**2, dim=dim))
+    l2 = torch.sqrt(torch.sum((real_data-fake_data)**2, dim=dim))
     return l2.mean()
 
 
@@ -143,3 +143,11 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
             res2 = res2.sum()*2./(n*n)
             stat = stat + res1 - res2
         return stat
+
+# *** Power Penalty ***
+# power penalty for netD
+def power_penalty_D(x, eta, netI):
+    z_hat = netG(x)
+    target = eta * torch.ones(len(z_hat))
+    l2 = torch.norm(z_hat - target)
+    return l2
