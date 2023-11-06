@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 torch.manual_seed(1)
 DIM_MNIST = 128
-Z_DIM_MNIST = 8
+Z_DIM_MNIST = 4
 Z_OUTPUT_DIM_MNIST = 784
 
 class I_MNIST(nn.Module):

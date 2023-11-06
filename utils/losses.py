@@ -20,7 +20,7 @@ def D_loss(netI, netG, netD, real_data, fake_data):
     return losses.mean()
 
 # loss function for G and I update:
-def GQ_loss(netI, netG, netD, real_data, fake_data, p=2):
+def GI_loss(netI, netG, netD, real_data, fake_data, p=2):
     post_data = netG(netI(real_data))
     n_dim = len(post_data.shape)
     dim = list(range(1, n_dim))
@@ -96,12 +96,12 @@ def gradient_penalty_dual(x, z, netD, netG, netI):
     x_hat = netG(z)
     return _gradient_penalty(x_hat, x, netD)
 
-# Penalty for z and Q(x)
+# Penalty for z and I(x)
 def z_Qx(x, z, netD, netG, netI):
     return ((z - netI(x)).norm(p=2, dim=1)**2).mean()
 
 # *** MMD penalty ***
-# MMD loss between z and Q(x)
+# MMD loss between z and I(x)
 def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
     n = z.shape[0]
     zdim = z.shape[1]

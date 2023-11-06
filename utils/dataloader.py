@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 
 # MNIST dataloader
 class MNISTBatcher(Dataset):
-    def __init__(self, data_path='/modesim/scratch/data/MNIST/mnist.pkl.gz', train=True):
+    def __init__(self, data_path='./datasets/MNIST/mnist.pkl.gz', train=True):
         self.data_path = data_path
         self.train = train
         with gzip.open(self.data_path, 'rb') as f:

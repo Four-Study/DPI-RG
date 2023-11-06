@@ -167,7 +167,7 @@ def mnist_generator(data, batch_size, n_labelled, limit=None):
     return get_epoch
 
 def load(batch_size, test_batch_size, n_labelled=None):
-    with gzip.open('/modesim/scratch/chenya3i/data/MNIST/mnist.pkl.gz', 'rb') as f:
+    with gzip.open('./datasets/MNIST/mnist.pkl.gz', 'rb') as f:
         train_data, dev_data, test_data = pickle.load(f, encoding='latin1')
     return (mnist_generator(train_data, batch_size, n_labelled),
             mnist_generator(dev_data, test_batch_size, n_labelled),
