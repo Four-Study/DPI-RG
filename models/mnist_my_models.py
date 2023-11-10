@@ -1,42 +1,56 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 torch.manual_seed(1)
     
-class I_MNIST(nn.Module):
+# class I_MNIST(nn.Module):
 
-    def __init__(self, nz, ngpu=1, nc=1):
-        super(I_MNIST, self).__init__()
-        self.nz = nz
-        self.ngpu = ngpu
-        if nc == 3:
-            ks = 5
-        else:
-            ks = 4
-        self.main = nn.Sequential(            
-            nn.Conv2d(in_channels=nc, out_channels=6, kernel_size=4, stride=1),
-            nn.Tanh(),
-            nn.AvgPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=6, out_channels=16, kernel_size=4, stride=1),
-            nn.Tanh(),
-            nn.AvgPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=16, out_channels=120, kernel_size=ks, stride=1),
-            nn.Tanh(),
-            nn.Flatten(),
-            nn.Linear(in_features=120, out_features=84),
-            nn.Tanh(),
-            nn.Linear(in_features=84, out_features=nz)
-        )
+#     def __init__(self, nz, ngpu=1, nc=1):
+#         super(I_MNIST, self).__init__()
+#         self.nz = nz
+#         self.ngpu = ngpu
+#         if nc == 3:
+#             ks = 5
+#         else:
+#             ks = 4
+#         self.main = nn.Sequential(            
+#             nn.Conv2d(in_channels=nc, out_channels=6, kernel_size=4, stride=1),
+#             nn.Tanh(),
+#             nn.AvgPool2d(kernel_size=2),
+#             nn.Conv2d(in_channels=6, out_channels=16, kernel_size=4, stride=1),
+#             nn.Tanh(),
+#             nn.AvgPool2d(kernel_size=2),
+#             nn.Conv2d(in_channels=16, out_channels=120, kernel_size=ks, stride=1),
+#             nn.Tanh(),
+#             nn.Flatten(),
+#             nn.Linear(in_features=120, out_features=84),
+#             nn.Tanh(),
+#             nn.Linear(in_features=84, out_features=nz)
+#         )
 
-    def forward(self, input):
-        input = input.view(-1, 1, 28, 28)
-        if input.is_cuda and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
-        return output
+#     def forward(self, input):
+#         input = input.view(-1, 1, 28, 28)
+#         if input.is_cuda and self.ngpu > 1:
+#             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+#         else:
+#             output = self.main(input)
+#         return output
 
+class I_MNIST(models.ResNet):
+    def __init__(self, num_classes=1000):
+        # Initialize with the basic block and layer configuration of ResNet-18
+        super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=num_classes)
+        self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        # Replace the maxpool layer
+        self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # Resize the input
+        x = x.view(-1, 1, 28, 28)
+        # Call the original forward method
+        return super(I_MNIST, self).forward(x)
     
 class G_MNIST(nn.Module):
     def __init__(self, nz, ngpu=1, nc=1, ngf=32):
