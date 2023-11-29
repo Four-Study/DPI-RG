@@ -1,101 +1,161 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 torch.manual_seed(1)
-DIM_MNIST = 128
-Z_DIM_MNIST = 8
-Z_OUTPUT_DIM_MNIST = 784
+    
+# class I_MNIST(nn.Module):
 
-class I_MNIST(nn.Module):
-    def __init__(self):
-        super(I_MNIST, self).__init__()
-        main = nn.Sequential(
-            nn.Conv2d(1, DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-            nn.Conv2d(DIM_MNIST, 2*DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-            nn.Conv2d(2*DIM_MNIST, 4*DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-        )
-        self.main = main
-        self.output = nn.Linear(4*4*4*DIM_MNIST, Z_DIM_MNIST)
-
-    def forward(self, input):
-        input = input.view(-1, 1, 28, 28)
-        out = self.main(input)
-        out = out.view(-1, 4*4*4*DIM_MNIST)
-        out = self.output(out)
-        return out
-
-class G_MNIST(nn.Module):
-    def __init__(self):
-        super(G_MNIST, self).__init__()
-        # Define Layers
-        preprocess = nn.Sequential(
-            nn.Linear(Z_DIM_MNIST, 4*4*4*DIM_MNIST),
-            nn.ReLU(True),
-        )
-        block1 = nn.Sequential(
-            nn.ConvTranspose2d(4*DIM_MNIST, 2*DIM_MNIST, 5),
-            nn.ReLU(True),
-        )
-        block2 = nn.Sequential(
-            nn.ConvTranspose2d(2*DIM_MNIST, DIM_MNIST, 5),
-            nn.ReLU(True),
-        )
-        deconv_out = nn.ConvTranspose2d(DIM_MNIST, 1, 8, stride=2)
-        # Define Network Layers
-        self.block1 = block1
-        self.block2 = block2
-        self.deconv_out = deconv_out
-        self.preprocess = preprocess
-        self.sigmoid = nn.Sigmoid()
-
-    # Define forward function
-    def forward(self, input):
-        output = self.preprocess(input)
-        output = output.view(-1, 4*DIM_MNIST, 4, 4)
-        output = self.block1(output)
-        output = output[:, :, :7, :7]
-        output = self.block2(output)
-        output = self.deconv_out(output)
-        output = self.sigmoid(output)
-        return output.view(-1, Z_OUTPUT_DIM_MNIST)
-
-class D_MNIST(nn.Module):
-    def __init__(self):
-        super(D_MNIST, self).__init__()
-        main = nn.Sequential(
-            nn.Conv2d(1, DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-            nn.Conv2d(DIM_MNIST, 2*DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-            nn.Conv2d(2*DIM_MNIST, 4*DIM_MNIST, 5, stride=2, padding=2),
-            nn.ReLU(True),
-        )
-        self.main = main
-        self.output = nn.Linear(4*4*4*DIM_MNIST, 1)
-
-    def forward(self, input):
-        input = input.view(-1, 1, 28, 28)
-        out = self.main(input)
-        out = out.view(-1, 4*4*4*DIM_MNIST)
-        out = self.output(out)
-        return out.view(-1)
-
-# class Class_MNIST(nn.Module):
-#     def __init__(self):
-#         super(Class_MNIST, self).__init__()
-#         main = nn.Sequential(
-#             nn.Linear(Z_DIM_MNIST, 200),
-#             nn.ReLU(True),
+#     def __init__(self, nz, ngpu=1, nc=1):
+#         super(I_MNIST, self).__init__()
+#         self.nz = nz
+#         self.ngpu = ngpu
+#         if nc == 3:
+#             ks = 5
+#         else:
+#             ks = 4
+#         self.main = nn.Sequential(            
+#             nn.Conv2d(in_channels=nc, out_channels=6, kernel_size=4, stride=1),
+#             nn.Tanh(),
+#             nn.AvgPool2d(kernel_size=2),
+#             nn.Conv2d(in_channels=6, out_channels=16, kernel_size=4, stride=1),
+#             nn.Tanh(),
+#             nn.AvgPool2d(kernel_size=2),
+#             nn.Conv2d(in_channels=16, out_channels=120, kernel_size=ks, stride=1),
+#             nn.Tanh(),
+#             nn.Flatten(),
+#             nn.Linear(in_features=120, out_features=84),
+#             nn.Tanh(),
+#             nn.Linear(in_features=84, out_features=nz)
 #         )
-#         self.main = main
-#         self.output = nn.Linear(200, 10)
 
 #     def forward(self, input):
-#         out = self.main(input)
-#         out = self.output(out)
-#         out = F.log_softmax(out, dim=1)
-#         return out
+#         input = input.view(-1, 1, 28, 28)
+#         if input.is_cuda and self.ngpu > 1:
+#             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+#         else:
+#             output = self.main(input)
+#         return output
+
+class I_MNIST(models.ResNet):
+    def __init__(self, num_classes=1000):
+        # Initialize with the basic block and layer configuration of ResNet-18
+        super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=num_classes)
+        self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        # Replace the maxpool layer
+        self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # Resize the input
+        x = x.view(-1, 1, 28, 28)
+        # Call the original forward method
+        return super(I_MNIST, self).forward(x)
+    
+class G_MNIST(nn.Module):
+    def __init__(self, nz, nc=1, ngf=32):
+        super(G_MNIST, self).__init__()
+        self.nz = nz
+        layers = [
+            # input is Z, going into a convolution
+            nn.ConvTranspose2d(     nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.ReLU(True),
+            # state size. (ngf*8) 
+            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.ReLU(True),
+            # state size. (ngf*4) 
+            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.ReLU(True),
+            # state size. (ngf*2) 
+            nn.ConvTranspose2d(ngf * 2,     ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+        ]
+        if nc == 3:
+            layers.extend([
+                nn.ConvTranspose2d(ngf, nc, 1, 1, 0, bias=False),
+                nn.Tanh()
+            ])
+        else:
+            layers.extend([
+                nn.ConvTranspose2d(ngf, nc, 1, 1, 2, bias=False),
+                nn.Tanh()
+            ])
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, input):
+        input = input.view(-1, self.nz, 1, 1)
+        output = self.main(input)
+        return output.view(-1, 28*28)
+
+# class D_MNIST(nn.Module):
+#     def __init__(self, ngpu=1, nc=1, ndf=32):
+#         super(D_MNIST, self).__init__()
+#         self.ngpu = ngpu
+#         layers = [
+#             # input is (nc) 
+#             nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+#             nn.LeakyReLU(0.2, inplace=True),
+#             # state size. (ndf) 
+#             nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(ndf * 2),
+#             nn.LeakyReLU(0.2, inplace=True),
+#             # state size. (ndf*2) 
+#             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(ndf * 4),
+#             nn.LeakyReLU(0.2, inplace=True)
+#         ]
+#         if nc == 3:
+#             layers.extend([
+#                 # state size. (ndf*8)
+#                 nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
+#                 nn.BatchNorm2d(ndf * 8),
+#                 nn.LeakyReLU(0.2, inplace=True),
+#                 # state size. (ndf*8) 
+#                 nn.Conv2d(ndf * 8,       1, 4, 2, 1, bias=False),
+#                 nn.Sigmoid()
+#             ])
+#         else:
+#             layers.extend([
+#                 nn.Conv2d(ndf * 4, 1, 4, 2, 1, bias=False),
+#                 nn.Sigmoid()
+#             ])
+#         self.main = nn.Sequential(*layers)
+
+#     def forward(self, input):
+#         input = input.view(-1, 1, 28, 28)
+#         if input.is_cuda and self.ngpu > 1:
+#             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
+#         else:
+#             output = self.main(input)
+#         return output.view(-1, 1).squeeze(1)
+    
+class D_MNIST(nn.Module):
+    def __init__(self, nz, ndf = 32):
+        super(D_MNIST, self).__init__()
+        layers = [
+            # input is (nz) 
+            # state size. (ndf * 4) 
+            nn.Linear(nz, ndf * 4),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout(p=0.3),
+            # state size. (ndf * 2) 
+            nn.Linear(ndf * 4, ndf * 2),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout(p=0.3),
+            # state size. (ndf) 
+            nn.Linear(ndf * 2, ndf),
+            nn.LeakyReLU(0.1, inplace=True),
+            nn.Dropout(p=0.3),
+            nn.Linear(ndf, 1),
+            nn.Sigmoid()
+        ]
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, input):
+        output = self.main(input)
+        return output.squeeze(1)
+    

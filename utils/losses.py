@@ -14,21 +14,21 @@ import torch.optim as optim
 gpu = 0
 
 # loss function for D update:
-def D_loss(netI, netG, netD, real_data, fake_data):
-    post_data = netG(netI(real_data))
-    losses = netD(fake_data) - netD(post_data)
+def D_loss(netI, netG, netD, z, fake_z):
+    post_z = netI(netG(z))
+    losses = netD(fake_z) - netD(post_z)
     return losses.mean()
 
 # loss function for G and I update:
-def GI_loss(netI, netG, netD, real_data, fake_data, p=2):
-    post_data = netG(netI(real_data))
-    n_dim = len(post_data.shape)
+def GI_loss(netI, netG, netD, z, fake_z, p=2):
+    post_z = netI(netG(z))
+    n_dim = len(post_z.shape)
     dim = list(range(1, n_dim))
     # distance = torch.dist(real_data, post_data, p=p)
     # sz = 1
-    l2 = torch.sqrt(torch.sum((real_data-post_data)**2, dim=dim))
+    l2 = torch.sqrt(torch.sum((z-post_z)**2, dim=dim))
     # sz = real_data.shape[0]
-    losses = l2 + netD(post_data) - netD(fake_data)
+    losses = l2 + netD(post_z) - netD(fake_z)
     return losses.mean()
 
 # reconstruction for z
@@ -40,25 +40,25 @@ def rec_z(netG, netI, z):
     return l2.mean()
 
 # primal loss function
-def primal(netI, netG, netD, real_data, p=2):
-    post_data = netG(netI(real_data))
-    n_dim = len(post_data.shape)
+def primal(netI, netG, netD, z, p=2):
+    post_z = netI(netG(z))
+    n_dim = len(post_z.shape)
     dim = list(range(1, n_dim))
-    l2 = torch.sqrt(torch.sum((real_data-post_data)**2, dim=dim))
+    l2 = torch.sqrt(torch.sum((z-post_z)**2, dim=dim))
     return l2.mean()
 
 # primal loss based on z_sample
-def primal_z(netG, real_data, z_sample, p=2):
-    fake_data = netG(z_sample)
-    n_dim = len(post_data.shape)
-    dim = list(range(1, n_dim))
-    l2 = torch.sqrt(torch.sum((real_data-fake_data)**2, dim=dim))
-    return l2.mean()
+# def primal_z(netG, real_data, z_sample, p=2):
+#     fake_data = netG(z_sample)
+#     n_dim = len(post_data.shape)
+#     dim = list(range(1, n_dim))
+#     l2 = torch.sqrt(torch.sum((real_data-fake_data)**2, dim=dim))
+#     return l2.mean()
 
 
 # dual loss function
-def dual(netI, netG, netD, real_data, fake_data):
-    losses = netD(real_data) - netD(fake_data)
+def dual(netI, netG, netD, z, fake_z):
+    losses = netD(z) - netD(fake_z)
     return losses.mean()
 
 # *** Penalty Terms ***
@@ -93,8 +93,9 @@ def gradient_penalty_DG(x, z, netD, netG, netI):
 
 # gradient penalty for dual
 def gradient_penalty_dual(x, z, netD, netG, netI):
-    x_hat = netG(z)
-    return _gradient_penalty(x_hat, x, netD)
+    # x_hat = netG(z)
+    z_hat = netI(x)
+    return _gradient_penalty(z_hat, z, netD)
 
 # Penalty for z and I(x)
 def z_Qx(x, z, netD, netG, netI):
