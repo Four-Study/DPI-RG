@@ -133,13 +133,43 @@ class G_MNIST(nn.Module):
 #             output = self.main(input)
 #         return output.view(-1, 1).squeeze(1)
     
+# class D_MNIST(nn.Module):
+#     def __init__(self, nz, ndf = 32):
+#         super(D_MNIST, self).__init__()
+#         layers = [
+#             # input is (nz) 
+#             # state size. (ndf * 4) 
+#             nn.Linear(5 * nz, ndf * 4),
+#             nn.LeakyReLU(0.1, inplace=True),
+#             nn.Dropout(p=0.3),
+#             # state size. (ndf * 2) 
+#             nn.Linear(ndf * 4, ndf * 2),
+#             nn.LeakyReLU(0.1, inplace=True),
+#             nn.Dropout(p=0.3),
+#             # state size. (ndf) 
+#             nn.Linear(ndf * 2, ndf),
+#             nn.LeakyReLU(0.1, inplace=True),
+#             nn.Dropout(p=0.3),
+#             nn.Linear(ndf, 1),
+#             nn.Sigmoid()
+#         ]
+#         self.main = nn.Sequential(*layers)
+
+#     def forward(self, input):
+#         # print(input.shape)
+#         powers = torch.cat([torch.pow(input, i) for i in range(1, 6)], dim=1)
+#         # print(powers.shape)
+#         output = self.main(powers)
+#         return output.squeeze(1)
+    
 class D_MNIST(nn.Module):
-    def __init__(self, nz, ndf = 32):
+    def __init__(self, nz, ndf = 32, power = 7):
         super(D_MNIST, self).__init__()
+        self.power = power
         layers = [
             # input is (nz) 
             # state size. (ndf * 4) 
-            nn.Linear(nz, ndf * 4),
+            nn.Linear(nz * power , ndf * 4),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout(p=0.3),
             # state size. (ndf * 2) 
@@ -156,6 +186,10 @@ class D_MNIST(nn.Module):
         self.main = nn.Sequential(*layers)
 
     def forward(self, input):
+        # print(input.shape)
+        # dist = nn.PairwiseDistance(input, p=2)
+        powers = [i for i in range(0, self.power)]
+        input = torch.cat([torch.pow(input, i) for i in powers], dim=1)
+        # print(powers.shape)
         output = self.main(input)
         return output.squeeze(1)
-    

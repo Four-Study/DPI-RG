@@ -11,7 +11,7 @@ import torch
 
 random.seed(1)
 np.random.seed(1)
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 # ****************************
 # *** Mixture of Gaussians ***
