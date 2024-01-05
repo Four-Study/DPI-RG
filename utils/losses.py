@@ -31,6 +31,9 @@ def GI_loss(netI, netG, netD, z, fake_z, p=2):
     losses = l2 + netD(post_z) - netD(fake_z)
     return losses.mean()
 
+# loss function for I update in power section
+I_loss = nn.MSELoss()
+
 # reconstruction for z
 def rec_z(netG, netI, z):
     z_t = netI(netG(z))
