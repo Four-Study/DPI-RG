@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-torch.manual_seed(1)
+# torch.manual_seed(1)
     
 # class I_MNIST(nn.Module):
 
@@ -163,7 +163,7 @@ class G_MNIST(nn.Module):
 #         return output.squeeze(1)
     
 class D_MNIST(nn.Module):
-    def __init__(self, nz, ndf = 32, power = 7):
+    def __init__(self, nz, ndf = 32, power = 6):
         super(D_MNIST, self).__init__()
         self.power = power
         layers = [

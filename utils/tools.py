@@ -240,7 +240,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              train_gen, train_loader, batch_size, start_epoch, end_epoch, 
              z_dim, device, lab, present_label, all_label, 
              lambda_gp, lambda_power, sample_sizes = None, 
-             critic_iter = 10, critic_iter_d = 10):
+             critic_iter = 10, critic_iter_d = 10, lambda_mmd = 10.0):
 
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
@@ -273,9 +273,9 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             x = images.view(len(images), 784).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             ## MMD loss has been removed from the paper
-            # fake_z = netI(x)
-            # mmd = mmd_penalty(fake_z, z, kernel="IMQ")
-            primal_cost = cost_GI #+ lambda_mmd * mmd
+            fake_z = netI(x)
+            mmd = mmd_penalty(fake_z, z, kernel="IMQ")
+            primal_cost = cost_GI + lambda_mmd * mmd
             primal_cost.backward()
             optim_I.step()
             optim_G.step()
