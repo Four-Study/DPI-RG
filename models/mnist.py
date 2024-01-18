@@ -39,7 +39,7 @@ from torchvision import models
 #         return output
 
 class I_MNIST(models.ResNet):
-    def __init__(self, num_classes=1000):
+    def __init__(self, nz=5):
         # Initialize with the basic block and layer configuration of ResNet-18
         super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=num_classes)
         self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
@@ -47,10 +47,160 @@ class I_MNIST(models.ResNet):
         self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
-        # Resize the input
+        # Reshape the input
         x = x.view(-1, 1, 28, 28)
         # Call the original forward method
         return super(I_MNIST, self).forward(x)
+
+class I_MNIST2(models.ResNet):
+    def __init__(self, nz=5):
+        # Initialize with the basic block and layer configuration of ResNet-18
+        super(I_MNIST2, self).__init__(block=models.resnet.BasicBlock, layers=[3, 4, 6, 3], num_classes=num_classes)
+        self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        # Replace the maxpool layer
+        self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        # Reshape the input
+        x = x.view(-1, 1, 28, 28)
+        # Call the original forward method
+        return super(I_MNIST2, self).forward(x)
+
+
+class I_MNIST3(nn.Module):
+
+    def __init__(self, nz):
+        super(I_MNIST3, self).__init__()
+
+        # calculate same padding:
+        # (w - k + 2*p)/s + 1 = o
+        # => p = (s(o-1) - w + k)/2
+        layers = [
+            # block 1
+            nn.Conv2d(in_channels=1,
+                      out_channels=64,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      # (1(32-1)- 32 + 3)/2 = 1
+                      padding=3),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64,
+                      out_channels=64,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2),
+                         stride=(2, 2)),
+            # block 2
+            nn.Conv2d(in_channels=64,
+                      out_channels=128,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=128,
+                      out_channels=128,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2),
+                         stride=(2, 2)),
+            # block 3
+            nn.Conv2d(in_channels=128,
+                      out_channels=256,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=256,
+                      out_channels=256,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=256,
+                      out_channels=256,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2),
+                         stride=(2, 2)),
+            # block 4
+            nn.Conv2d(in_channels=256,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2),
+                         stride=(2, 2)),
+            # block 5
+            nn.Conv2d(in_channels=512,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=512,
+                      out_channels=512,
+                      kernel_size=(3, 3),
+                      stride=(1, 1),
+                      padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=(2, 2),
+                         stride=(2, 2)),
+            # classifier
+            nn.Flatten(),
+            nn.Linear(512, 4096),
+            nn.ReLU(True),
+            nn.Dropout(p=0.65),
+            nn.Linear(4096, 4096),
+            nn.ReLU(True),
+            nn.Dropout(p=0.65),
+            nn.Linear(4096, nz),
+        ]
+        self.main = nn.Sequential(*layers)
+
+    def forward(self, x):
+        # Reshape the input
+        x = x.view(-1, 1, 28, 28)
+        logits = self.main(x)
+        return logits
+
     
 class G_MNIST(nn.Module):
     def __init__(self, nz, nc=1, ngf=32):

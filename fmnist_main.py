@@ -48,16 +48,17 @@ test_gen     = dsets.FashionMNIST(root="./datasets",train=False, transform=trans
 ## hyper-parameters
 n_rep = 10
 random_seed = 2020
-epochs1 = 40
-epochs2 = 40
+epochs1 = 50
+epochs2 = 50
 std = 0.5
-learning_rate = 5e-4
+learning_rate = 1e-4
 weight_decay = 0.01
 batch_size = 250
 z_dim = 5
-# lambda_mmd = 10.0
+lambda_mmd = 10.0
 lambda_gp = 0.1
-lambda_power = 0.5
+lambda_power = 1.5
+eta = 2.0
 present_label = list(range(10))
 missing_label = []
 all_label     = present_label + missing_label
@@ -74,7 +75,7 @@ for rep in range(n_rep):
     T_trains = []
     for lab in present_label:
         ## initialize models
-        netI = I_MNIST(num_classes=z_dim)
+        netI = I_MNIST3(nz=z_dim)
         netG = G_MNIST(nz=z_dim)
         netD = D_MNIST(nz=z_dim, power = 5)
         netI = netI.to(device)
@@ -100,7 +101,7 @@ for rep in range(n_rep):
         train_al(netI, netG, netD, optim_I, optim_G, optim_D,
                  train_gen, train_loader, batch_size, 0, epochs1, 
                  z_dim, device, lab, present_label, all_label, 
-                 lambda_gp, lambda_power)
+                 lambda_gp, lambda_power, lambda_mmd = lambda_mmd, eta = eta)
     
         ## find out fake_zs
         fake_zs = []
@@ -147,7 +148,8 @@ for rep in range(n_rep):
         train_al(netI, netG, netD, optim_I, optim_G, optim_D,
                  train_gen, train_loader, batch_size, epochs1, epochs2, 
                  z_dim, device, lab, present_label, all_label, 
-                 lambda_gp, lambda_power, sample_sizes)
+                 lambda_gp, lambda_power, lambda_mmd = lambda_mmd, 
+                 sample_sizes = sample_sizes, eta = eta)
         
         ## find out fake_zs
         fake_zs = []
@@ -185,7 +187,7 @@ for rep in range(n_rep):
         for pidx in range(len(present_label)):
             T_train = T_trains[pidx]
             em_len = len(T_train)
-            netI = I_MNIST(num_classes=z_dim)
+            netI = I_MNIST3(nz=z_dim)
             netI = netI.to(device)
             netI = torch.nn.DataParallel(netI)
             model_save_file = 'fmnist_param/' + 'class' + str(present_label[pidx]) + '.pt'
@@ -235,5 +237,5 @@ res = (cover_accs, avg_counts)
 
 import pickle
 
-with open('outputs/FMNIST/OOD0.pkl', 'wb') as out:
+with open('outputs/FMNIST/resnet34_OOD0.pkl', 'wb') as out:
     pickle.dump(res, out)

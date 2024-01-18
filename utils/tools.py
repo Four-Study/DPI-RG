@@ -239,8 +239,9 @@ def save_models(net_dict, epoch, path):
 def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              train_gen, train_loader, batch_size, start_epoch, end_epoch, 
              z_dim, device, lab, present_label, all_label, 
-             lambda_gp, lambda_power, sample_sizes = None, 
-             critic_iter = 10, critic_iter_d = 10, lambda_mmd = 10.0):
+             lambda_gp, lambda_power, lambda_mmd = 10.0, eta = 3, 
+             sample_sizes = None, img_size = 28, nc = 1,
+             critic_iter = 10, critic_iter_d = 10):
 
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
@@ -262,7 +263,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
         iter_count = 0
         for _ in range(critic_iter):
             images, _ = next_batch(data, train_loader)
-            x = images.view(len(images), 784).to(device)
+            x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             fake_z = netI(x)
             fake_x = netG(z)
@@ -270,7 +271,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             netG.zero_grad()
             cost_GI = GI_loss(netI, netG, netD, z, fake_z)
             images, _ = next_batch(data, train_loader)
-            x = images.view(len(images), 784).to(device)
+            x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             ## MMD loss has been removed from the paper
             fake_z = netI(x)
@@ -296,14 +297,14 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
         # (2). Update D
         for _ in range(critic_iter_d):
             images, _ = next_batch(data, train_loader)
-            x = images.view(len(images), 784).to(device)
+            x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             fake_z = netI(x)
             fake_x = netG(z)
             netD.zero_grad()
             cost_D = D_loss(netI, netG, netD, z, fake_z)
             images, y = next_batch(data, train_loader)
-            x = images.view(len(images), 784)
+            x = images.view(len(images), nc * img_size ** 2)
             x = x.to(device)
             z = torch.randn(len(images), z_dim)
             z = z.to(device)
@@ -354,7 +355,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             x, _ = batch
             bs = len(x)
             
-            z = torch.ones(bs, z_dim, 1, 1, device = device) * 3
+            z = torch.ones(bs, z_dim, 1, 1, device = device) * eta
             x = x.to(device) 
             fake_z = netI(x)
 
@@ -426,6 +427,56 @@ def visualize_p(all_p_vals, present_label, all_label, missing_label, nz, classes
     fig.tight_layout()
 #     plt.savefig('size_power.pdf', dpi=150)
     plt.show()
+
+def visualize_fake_C(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
+    
+    print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
+    
+    # visualization for fake_C which have the test label
+    if len(present_label) == 1:
+        fig, axs = plt.subplots(1, len(all_label), 
+                                figsize=(5*len(all_label), 5*len(present_label)))
+
+        matplotlib.rc('xtick', labelsize=15) 
+        matplotlib.rc('ytick', labelsize=15) 
+        llim = np.min(all_fake_Cs[0])
+        rlim = np.quantile(all_fake_Cs[0], 0.9)
+        for i in range(len(all_label)):
+            fake_Cs = all_fake_Cs[i]
+            axs[i].set_ylabel(classes[all_label[i]], fontsize = 25)
+            axs[i].set_xlim([llim, rlim])
+            _ = axs[i].hist(fake_Cs[0, :])
+            axs[i].set_title('Label {} from Label {}\'s net'.format(all_label[i], present_label[0]), fontsize = 20)
+
+            if i == len(all_label) - 1:
+                axs[i].set_xlabel(classes[present_label[0]], fontsize = 25)
+    else:
+        fig, axs = plt.subplots(len(present_label), len(all_label), 
+                                figsize=(5*len(all_label), 5*len(present_label)))
+
+        matplotlib.rc('xtick', labelsize=15) 
+        matplotlib.rc('ytick', labelsize=15) 
+        llim = np.min(all_fake_Cs[0])
+        rlim = np.quantile(all_fake_Cs[0], 0.9)
+        for i in range(len(all_label)):
+            
+            fake_Cs = all_fake_Cs[i]
+            
+            for j in range(len(present_label)):
+
+                axs[j, i].set_xlim([llim, rlim])
+                _ = axs[j, i].hist(fake_Cs[j, :])
+                axs[j, i].set_title('Label {} from Label {}\'s net'.format(all_label[i], present_label[j]))
+
+                if i == 0:
+                    axs[j, i].set_ylabel(classes[present_label[j]], fontsize = 25)
+                if j == len(present_label) - 1:
+                    axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
+    fig.supylabel('Training', fontsize = 25)
+    fig.supxlabel('Testing', fontsize = 25)
+    plt.tight_layout()
+    plt.show()
+
 
 def next_batch(data_iter, train_loader):
     try:
