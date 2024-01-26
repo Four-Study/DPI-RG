@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from utils.losses import *
 
-random.seed(1)
-np.random.seed(1)
+# random.seed(1)
+# np.random.seed(1)
 # matplotlib.use('Agg')
 
 # ****************************
@@ -181,67 +181,67 @@ np.random.seed(1)
 #         for images, targes in gen():
 #             yield images
 
-def filename(z_dim, structure_dim, batch_size, lambda_mmd, lambda_gp):
-    return "_Z_" + str(z_dim) + \
-        "_SD_" + str(structure_dim) + \
-        "_BS_" + str(batch_size) + \
-        "_LM_" + str(lambda_mmd).replace(".", "-") + \
-        "_LG_" + str(lambda_gp).replace(".", "-") + ".png"
+# def filename(z_dim, structure_dim, batch_size, lambda_mmd, lambda_gp):
+#     return "_Z_" + str(z_dim) + \
+#         "_SD_" + str(structure_dim) + \
+#         "_BS_" + str(batch_size) + \
+#         "_LM_" + str(lambda_mmd).replace(".", "-") + \
+#         "_LG_" + str(lambda_gp).replace(".", "-") + ".png"
 
-def picture(z, x, netG, netQ, FN, picture_type):
-    if picture_type == "fake":
-        fake = netG(z).cpu().data.numpy()
-        plt.scatter(fake[:, 0], fake[:, 1])
-        plt.savefig("fake"+FN)
-        plt.close()
-    if picture_type == "latent":
-        latent = netQ(x).cpu().data.numpy()
-        plt.scatter(latent[:, 0], latent[:, 1])
-        plt.savefig("latent"+FN)
-        plt.close()
-    if picture_type == "post":
-        post = netG(netQ(x)).cpu().data.numpy()
-        real = x.cpu().data.numpy()
-        plt.scatter(real[:, 0], real[:, 1])
-        plt.scatter(post[:, 0], post[:, 1])
-        plt.savefig("post"+FN)
-        plt.close()
+# def picture(z, x, netG, netQ, FN, picture_type):
+#     if picture_type == "fake":
+#         fake = netG(z).cpu().data.numpy()
+#         plt.scatter(fake[:, 0], fake[:, 1])
+#         plt.savefig("fake"+FN)
+#         plt.close()
+#     if picture_type == "latent":
+#         latent = netQ(x).cpu().data.numpy()
+#         plt.scatter(latent[:, 0], latent[:, 1])
+#         plt.savefig("latent"+FN)
+#         plt.close()
+#     if picture_type == "post":
+#         post = netG(netQ(x)).cpu().data.numpy()
+#         real = x.cpu().data.numpy()
+#         plt.scatter(real[:, 0], real[:, 1])
+#         plt.scatter(post[:, 0], post[:, 1])
+#         plt.savefig("post"+FN)
+#         plt.close()
 
-def all_pictures(z, x, netG, netQ, DIR, FN, MMD, GP, RE):
-    plt.figure(figsize=(16, 12))
-    plt.subplot(2, 2, 1)
-    fake = netG(z).cpu().data.numpy()
-    plt.scatter(fake[:, 0], fake[:, 1])
-    plt.title("Generated Samples")
-    plt.subplot(2, 2, 2)
-    latent = netQ(x).cpu().data.numpy()
-    plt.scatter(latent[:, 0], latent[:, 1])
-    plt.title("Latent Space")
-    plt.subplot(2, 2, 3)
-    post = netG(netQ(x)).cpu().data.numpy()
-    real = x.cpu().data.numpy()
-    plt.scatter(real[:, 0], real[:, 1], label="Real Samples")
-    plt.scatter(post[:, 0], post[:, 1], label="Post Samples")
-    plt.legend()
-    plt.title("Post Samples vs. Real Samples")
-    plt.subplot(2, 2, 4)
-    plt.plot(MMD, label="MMD")
-    plt.plot(GP, label="GP")
-    plt.plot(RE, label="RE")
-    plt.legend()
-    plt.savefig(DIR + "all" + FN)
-    plt.close()
+# def all_pictures(z, x, netG, netQ, DIR, FN, MMD, GP, RE):
+#     plt.figure(figsize=(16, 12))
+#     plt.subplot(2, 2, 1)
+#     fake = netG(z).cpu().data.numpy()
+#     plt.scatter(fake[:, 0], fake[:, 1])
+#     plt.title("Generated Samples")
+#     plt.subplot(2, 2, 2)
+#     latent = netQ(x).cpu().data.numpy()
+#     plt.scatter(latent[:, 0], latent[:, 1])
+#     plt.title("Latent Space")
+#     plt.subplot(2, 2, 3)
+#     post = netG(netQ(x)).cpu().data.numpy()
+#     real = x.cpu().data.numpy()
+#     plt.scatter(real[:, 0], real[:, 1], label="Real Samples")
+#     plt.scatter(post[:, 0], post[:, 1], label="Post Samples")
+#     plt.legend()
+#     plt.title("Post Samples vs. Real Samples")
+#     plt.subplot(2, 2, 4)
+#     plt.plot(MMD, label="MMD")
+#     plt.plot(GP, label="GP")
+#     plt.plot(RE, label="RE")
+#     plt.legend()
+#     plt.savefig(DIR + "all" + FN)
+#     plt.close()
 
-def save_models(net_dict, epoch, path):
-    for key in net_dict.keys():
-        torch.save(net_dict[key].state_dict(), path+str(key)+"_"+str(epoch))
+# def save_models(net_dict, epoch, path):
+#     for key in net_dict.keys():
+#         torch.save(net_dict[key].state_dict(), path+str(key)+"_"+str(epoch))
 
 def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              train_gen, train_loader, batch_size, start_epoch, end_epoch, 
              z_dim, device, lab, present_label, all_label, 
              lambda_gp, lambda_power, lambda_mmd = 10.0, eta = 3, 
              sample_sizes = None, img_size = 28, nc = 1,
-             critic_iter = 10, critic_iter_d = 10):
+             critic_iter = 15, critic_iter_d = 15):
 
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
@@ -425,7 +425,7 @@ def visualize_p(all_p_vals, present_label, all_label, missing_label, nz, classes
     fig.supylabel('Training', fontsize = 25)
     fig.supxlabel('Testing', fontsize = 25)
     fig.tight_layout()
-#     plt.savefig('size_power.pdf', dpi=150)
+    plt.savefig('size_power.pdf', dpi=150)
     plt.show()
 
 def visualize_fake_C(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
@@ -475,6 +475,7 @@ def visualize_fake_C(all_fake_Cs, present_label, all_label, missing_label, nz, c
     fig.supylabel('Training', fontsize = 25)
     fig.supxlabel('Testing', fontsize = 25)
     plt.tight_layout()
+    plt.savefig('fake_T.pdf', dpi=150)
     plt.show()
 
 
