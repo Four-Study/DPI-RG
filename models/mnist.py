@@ -41,7 +41,7 @@ from torchvision import models
 class I_MNIST(models.ResNet):
     def __init__(self, nz=5):
         # Initialize with the basic block and layer configuration of ResNet-18
-        super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=num_classes)
+        super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=nz)
         self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         # Replace the maxpool layer
         self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
@@ -55,7 +55,7 @@ class I_MNIST(models.ResNet):
 class I_MNIST2(models.ResNet):
     def __init__(self, nz=5):
         # Initialize with the basic block and layer configuration of ResNet-18
-        super(I_MNIST2, self).__init__(block=models.resnet.BasicBlock, layers=[3, 4, 6, 3], num_classes=num_classes)
+        super(I_MNIST2, self).__init__(block=models.resnet.BasicBlock, layers=[3, 4, 6, 3], num_classes=nz)
         self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         # Replace the maxpool layer
         self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)

@@ -428,7 +428,7 @@ def visualize_p(all_p_vals, present_label, all_label, missing_label, nz, classes
     plt.savefig('size_power.pdf', dpi=150)
     plt.show()
 
-def visualize_fake_C(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
+def visualize_fake_T(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
     
     print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
     
