@@ -47,8 +47,8 @@ lambda_mmd = 10.0
 lambda_gp = 0.1
 lambda_power = 1.5
 eta = 2.5
-present_label = list(range(10))
-missing_label = []
+present_label = list(range(9))
+missing_label = [9]
 all_label     = present_label + missing_label
 classes       = train_gen.classes
 
@@ -63,7 +63,7 @@ for rep in range(n_rep):
     T_trains = []
     for lab in present_label:
         ## initialize models
-        netI = I_MNIST2(nz=z_dim)
+        netI = I_MNIST(nz=z_dim)
         netG = G_MNIST(nz=z_dim)
         netD = D_MNIST(nz=z_dim, power = 5)
         netI = netI.to(device)
@@ -175,7 +175,7 @@ for rep in range(n_rep):
         for pidx in range(len(present_label)):
             T_train = T_trains[pidx]
             em_len = len(T_train)
-            netI = I_MNIST2(nz=z_dim)
+            netI = I_MNIST(nz=z_dim)
             netI = netI.to(device)
             netI = torch.nn.DataParallel(netI)
             model_save_file = 'fmnist_param/' + 'class' + str(present_label[pidx]) + '.pt'
@@ -225,5 +225,5 @@ res = (cover_accs, avg_counts)
 
 import pickle
 
-with open('outputs/FMNIST/resnet34.pkl', 'wb') as out:
+with open('outputs/FMNIST/resnet18_outlier.pkl', 'wb') as out:
     pickle.dump(res, out)
