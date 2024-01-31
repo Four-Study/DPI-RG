@@ -21,7 +21,6 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 
 ## Training
-# torch.manual_seed(random_seed)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # check if gpu is available
 
 ## load datasets
@@ -35,7 +34,7 @@ test_gen     = dsets.FashionMNIST(root="./datasets",train=False, transform=trans
 
 
 ## hyper-parameters
-n_rep = 10
+n_rep = 20
 epochs1 = 50
 epochs2 = 50
 std = 0.5
@@ -45,7 +44,7 @@ batch_size = 250
 z_dim = 5
 lambda_mmd = 10.0
 lambda_gp = 0.1
-lambda_power = 1.5
+lambda_power = 1.8
 eta = 2.5
 present_label = list(range(9))
 missing_label = [9]
@@ -65,7 +64,7 @@ for rep in range(n_rep):
         ## initialize models
         netI = I_MNIST(nz=z_dim)
         netG = G_MNIST(nz=z_dim)
-        netD = D_MNIST(nz=z_dim, power = 5)
+        netD = D_MNIST(nz=z_dim, power = 6)
         netI = netI.to(device)
         netG = netG.to(device)
         netD = netD.to(device)
