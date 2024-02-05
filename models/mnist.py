@@ -241,47 +241,6 @@ class G_MNIST(nn.Module):
         output = self.main(input)
         return output.view(-1, 28*28)
 
-# class D_MNIST(nn.Module):
-#     def __init__(self, ngpu=1, nc=1, ndf=32):
-#         super(D_MNIST, self).__init__()
-#         self.ngpu = ngpu
-#         layers = [
-#             # input is (nc) 
-#             nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
-#             nn.LeakyReLU(0.2, inplace=True),
-#             # state size. (ndf) 
-#             nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-#             nn.BatchNorm2d(ndf * 2),
-#             nn.LeakyReLU(0.2, inplace=True),
-#             # state size. (ndf*2) 
-#             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-#             nn.BatchNorm2d(ndf * 4),
-#             nn.LeakyReLU(0.2, inplace=True)
-#         ]
-#         if nc == 3:
-#             layers.extend([
-#                 # state size. (ndf*8)
-#                 nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-#                 nn.BatchNorm2d(ndf * 8),
-#                 nn.LeakyReLU(0.2, inplace=True),
-#                 # state size. (ndf*8) 
-#                 nn.Conv2d(ndf * 8,       1, 4, 2, 1, bias=False),
-#                 nn.Sigmoid()
-#             ])
-#         else:
-#             layers.extend([
-#                 nn.Conv2d(ndf * 4, 1, 4, 2, 1, bias=False),
-#                 nn.Sigmoid()
-#             ])
-#         self.main = nn.Sequential(*layers)
-
-#     def forward(self, input):
-#         input = input.view(-1, 1, 28, 28)
-#         if input.is_cuda and self.ngpu > 1:
-#             output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-#         else:
-#             output = self.main(input)
-#         return output.view(-1, 1).squeeze(1)
     
 # class D_MNIST(nn.Module):
 #     def __init__(self, nz, ndf = 32):

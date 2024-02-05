@@ -50,14 +50,6 @@ def primal(netI, netG, netD, z, p=2):
     l2 = torch.sqrt(torch.sum((z-post_z)**2, dim=dim))
     return l2.mean()
 
-# primal loss based on z_sample
-# def primal_z(netG, real_data, z_sample, p=2):
-#     fake_data = netG(z_sample)
-#     n_dim = len(post_data.shape)
-#     dim = list(range(1, n_dim))
-#     l2 = torch.sqrt(torch.sum((real_data-fake_data)**2, dim=dim))
-#     return l2.mean()
-
 
 # dual loss function
 def dual(netI, netG, netD, z, fake_z):
@@ -149,9 +141,9 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
         return stat
 
 # *** Power Penalty ***
-# power penalty for netD
+# power penalty for netI
 def power_penalty_D(x, eta, netI):
-    z_hat = netG(x)
+    z_hat = netI(x)
     target = eta * torch.ones(len(z_hat))
-    l2 = torch.norm(z_hat - target)
+    l2 = torch.norm(z_hat - target, p=2)
     return l2
