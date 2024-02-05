@@ -29,20 +29,17 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # check i
 transform    = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
 train_gen    = dsets.FashionMNIST(root="./datasets",train=True, transform=transform, download=True)
 test_gen     = dsets.FashionMNIST(root="./datasets",train=False, transform=transform, download=True)
-# train_loader = DataLoader(train_gen, batch_size=batch_size, shuffle=True)
-# test_loader  = DataLoader(test_gen, batch_size=batch_size, shuffle=True)
-
 
 ## hyper-parameters
 n_rep = 20
 epochs1 = 50
 epochs2 = 50
 std = 0.5
-learning_rate = 1e-4
+learning_rate = 5e-4
 weight_decay = 0.01
 batch_size = 250
 z_dim = 5
-lambda_mmd = 10.0
+lambda_mmd = 100.0
 lambda_gp = 0.1
 lambda_power = 2.0
 eta = 2.5

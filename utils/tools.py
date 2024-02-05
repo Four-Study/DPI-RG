@@ -21,7 +21,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              z_dim, device, lab, present_label, all_label, 
              lambda_gp, lambda_power, lambda_mmd = 10.0, eta = 3, 
              sample_sizes = None, img_size = 28, nc = 1,
-             critic_iter = 15, critic_iter_d = 15, disp=False):
+             critic_iter = 15, critic_iter_d = 15, trace=False):
 
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
@@ -54,13 +54,13 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             fake_z = netI(x)
-            mmd = mmd_penalty(fake_z, z, kernel="IMQ")
+            mmd = mmd_penalty(fake_z, z, kernel="RBF")
             primal_cost = cost_GI + lambda_mmd * mmd
             primal_cost.backward()
             optim_I.step()
             optim_G.step()
         # print('GI: '+str(primal(netI, netG, netD, real_data).cpu().item()))
-        if disp:
+        if trace:
             print('GI: '+str(cost_GI.cpu().item()))
             print('MMD: '+str(lambda_mmd * mmd.cpu().item()))
         # (3). Append primal and dual loss to list
@@ -94,7 +94,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             optim_D.step()
             # loss_mmd.append(mmd.cpu().item())
         # print('D: '+str(primal(netI, netG, netD, real_data).cpu().item()))
-        if disp:
+        if trace:
             print('D: '+str(cost_D.cpu().item()))
         # gp.append(gp_D.cpu().item())
         # re.append(primal(netI, netG, netD, z).cpu().item())
