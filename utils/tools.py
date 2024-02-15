@@ -9,6 +9,7 @@ import pickle
 
 import torch
 import torch.nn as nn
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from utils.losses import *
 
@@ -19,13 +20,30 @@ from utils.losses import *
 def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              train_gen, train_loader, batch_size, start_epoch, end_epoch, 
              z_dim, device, lab, present_label, all_label, 
-             lambda_gp, lambda_power, lambda_mmd = 10.0, eta = 3, 
-             sample_sizes = None, img_size = 28, nc = 1,
+             lambda_gp, lambda_power, lambda_mmd = 3.0, eta = 3, 
+             sample_sizes = None, sampled_idxs = None, 
+             img_size = 28, nc = 1,
              critic_iter = 15, critic_iter_d = 15, trace=False):
 
+    imbalanced = True
+    if sampled_idxs is None:
+        imbalanced = False
+        sampled_idxs = []
+        for cur_lab in present_label:
+            if torch.is_tensor(train_gen.targets):
+                temp = torch.where(train_gen.targets == cur_lab)[0] 
+            else:
+                temp = torch.where(torch.Tensor(train_gen.targets) == cur_lab)[0] 
+            sampled_idxs.append(temp)
+            
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
 
+    ## learning rate schedulers
+    # scheduler_I = StepLR(optim_I, step_size=15, gamma=0.2)
+    # scheduler_G = StepLR(optim_G, step_size=15, gamma=0.2)
+    # scheduler_D = StepLR(optim_D, step_size=15, gamma=0.2)
+    
     ## training for this label started
     for epoch in range(start_epoch, end_epoch):
         ## first train in null hypothesis
@@ -40,7 +58,6 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
         for p in netG.parameters():
             p.requires_grad = True
         # (2). Update G and I
-        iter_count = 0
         for _ in range(critic_iter):
             images, _ = next_batch(data, train_loader)
             x = images.view(len(images), nc * img_size ** 2).to(device)
@@ -61,8 +78,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             optim_G.step()
         # print('GI: '+str(primal(netI, netG, netD, real_data).cpu().item()))
         if trace:
-            print('GI: '+str(cost_GI.cpu().item()))
-            print('MMD: '+str(lambda_mmd * mmd.cpu().item()))
+            print(f'GI: {cost_GI.cpu().item():.6f}')
+            print(f'MMD: {lambda_mmd * mmd.cpu().item():.6f}')
         # (3). Append primal and dual loss to list
         # primal_loss_GI.append(primal(netI, netG, netD, z).cpu().item())
         # dual_loss_GI.append(dual(netI, netG, netD, z, fake_z).cpu().item())
@@ -93,9 +110,9 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             dual_cost.backward()
             optim_D.step()
             # loss_mmd.append(mmd.cpu().item())
-        # print('D: '+str(primal(netI, netG, netD, real_data).cpu().item()))
         if trace:
-            print('D: '+str(cost_D.cpu().item()))
+            print(f'D: {cost_D.cpu().item():.6f}')
+            print(f'gp: {lambda_gp * gp_D.cpu().item():.6f}')
         # gp.append(gp_D.cpu().item())
         # re.append(primal(netI, netG, netD, z).cpu().item())
         # if (epoch+1) % 5 == 0:
@@ -111,11 +128,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
         count = 0
         for cur_lab in present_label:
             if cur_lab != lab:
-                if torch.is_tensor(train_gen.targets):
-                    temp = torch.where(train_gen.targets == cur_lab)[0] 
-                else:
-                    temp = torch.where(torch.Tensor(train_gen.targets) == cur_lab)[0] 
-                idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[count], replace=False)]])
+                temp = sampled_idxs[cur_lab]
+                idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[count], replace=imbalanced)]])
                 count += 1
         idxs2 = idxs2.int()
         train_data2 = torch.utils.data.Subset(train_gen, idxs2)
@@ -142,9 +156,12 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             netI.zero_grad()
             loss_power = lambda_power * I_loss(fake_z, z.reshape(bs, z_dim))
             loss_power.backward()
-
             optim_I.step()
-
+        if trace:
+            print(f'power: {loss_power.cpu().item():.6f}')
+        # scheduler_I.step()
+        # scheduler_G.step()
+        # scheduler_D.step()
 
 
 

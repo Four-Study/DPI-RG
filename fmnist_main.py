@@ -19,6 +19,9 @@ import torchvision.datasets as dsets
 import torchvision.transforms as transforms
 
 from torch.utils.data import DataLoader
+from datetime import datetime
+now = datetime.now()
+timestamp = now.strftime("%Y_%m_%d_%H%M")
 
 ## Training
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  # check if gpu is available
@@ -31,20 +34,20 @@ train_gen    = dsets.FashionMNIST(root="./datasets",train=True, transform=transf
 test_gen     = dsets.FashionMNIST(root="./datasets",train=False, transform=transform, download=True)
 
 ## hyper-parameters
-n_rep = 20
+n_rep = 1
 epochs1 = 50
 epochs2 = 50
-std = 0.5
+std = 0.1
 learning_rate = 5e-4
 weight_decay = 0.01
 batch_size = 250
 z_dim = 5
-lambda_mmd = 100.0
+lambda_mmd = 3.0
 lambda_gp = 0.1
-lambda_power = 2.0
+lambda_power = 1.5
 eta = 2.5
-present_label = list(range(9))
-missing_label = [9]
+present_label = list(range(10))
+missing_label = []
 all_label     = present_label + missing_label
 classes       = train_gen.classes
 
@@ -53,7 +56,7 @@ classes       = train_gen.classes
 # ************************
 
 cover_accs = []
-avg_counts = []
+avg_errors = []
 
 for rep in range(n_rep):
     T_trains = []
@@ -148,7 +151,7 @@ for rep in range(n_rep):
         T_trains.append(T_train)
     
         ## save net and graphs for each label
-        model_save_file = 'fmnist_param/' + 'class' + str(lab) + '.pt'
+        model_save_file = f'fmnist_param/{timestamp}_class{lab}.pt'
         torch.save(netI.state_dict(), model_save_file)
         del netI
         # print('Class', lab)
@@ -174,7 +177,7 @@ for rep in range(n_rep):
             netI = I_MNIST(nz=z_dim)
             netI = netI.to(device)
             netI = torch.nn.DataParallel(netI)
-            model_save_file = 'fmnist_param/' + 'class' + str(present_label[pidx]) + '.pt'
+            model_save_file = f'fmnist_param/{timestamp}_class{present_label[pidx]}.pt'
             netI.load_state_dict(torch.load(model_save_file))
     
             for i, batch in enumerate(test_loader):
@@ -195,31 +198,34 @@ for rep in range(n_rep):
         # print('Finished Label {}'.format(lab))
     
     cover_acc = torch.zeros(len(all_label))
-    avg_count = torch.zeros(len(all_label))
+    avg_error = torch.zeros(len(all_label))
     for i, lab in enumerate(all_label):
         p_vals = all_p_vals[i]
         n = p_vals.shape[1]
         cover = 0.0
-        counts = 0.0
+        error = 0.0
+        # counts = 0.0
         for j in range(n):
             pred = np.argmax(p_vals[:, j])
             p_set = np.where(p_vals[:, j] > 0.05)[0]
-            counts += len(p_set)
+            # counts += len(p_set)
             if lab in missing_label:
+                error += len(p_set)
                 if len(p_set) == 0:
                     cover += 1
             else:
+                error += abs(len(p_set) - 1)
                 if all_label[i] in p_set:
                     cover += 1
         cover_acc[i] = cover / n
-        avg_count[i] = counts / n
+        avg_error[i] = error / n
     cover_accs.append(cover_acc)
-    avg_counts.append(avg_count)
+    avg_errors.append(avg_error)
     print(rep)
 
-res = (cover_accs, avg_counts)
+res = (cover_accs, avg_errors)
 
 import pickle
-
-with open('outputs/FMNIST/resnet18_outlier.pkl', 'wb') as out:
+filename = f'outputs/FMNIST/resnet18_{timestamp}.pkl'
+with open(filename, 'wb') as out:
     pickle.dump(res, out)
