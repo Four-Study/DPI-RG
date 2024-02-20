@@ -22,8 +22,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              z_dim, device, lab, present_label, all_label, 
              lambda_gp, lambda_power, lambda_mmd = 3.0, eta = 3, 
              sample_sizes = None, sampled_idxs = None, 
-             img_size = 28, nc = 1,
-             critic_iter = 15, critic_iter_d = 15, trace=False):
+             img_size = 28, nc = 1, critic_iter = 10, critic_iter_d = 10, critic_iter_p = 5,
+             lr_decay = None, trace = False):
 
     imbalanced = True
     if sampled_idxs is None:
@@ -38,11 +38,12 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             
     if sample_sizes is None:
         sample_sizes = [int(len(train_loader.dataset.indices) / len(present_label))] * (len(present_label) - 1)
-
+        
     ## learning rate schedulers
-    # scheduler_I = StepLR(optim_I, step_size=15, gamma=0.2)
-    # scheduler_G = StepLR(optim_G, step_size=15, gamma=0.2)
-    # scheduler_D = StepLR(optim_D, step_size=15, gamma=0.2)
+    if type(lr_decay) is int:
+        scheduler_I = StepLR(optim_I, step_size=lr_decay, gamma=0.2)
+        scheduler_G = StepLR(optim_G, step_size=lr_decay, gamma=0.2)
+        scheduler_D = StepLR(optim_D, step_size=lr_decay, gamma=0.2)
     
     ## training for this label started
     for epoch in range(start_epoch, end_epoch):
@@ -78,7 +79,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             optim_G.step()
         # print('GI: '+str(primal(netI, netG, netD, real_data).cpu().item()))
         if trace:
-            print(f'GI: {cost_GI.cpu().item():.6f}')
+            print(f'GI:  {cost_GI.cpu().item():.6f}')
             print(f'MMD: {lambda_mmd * mmd.cpu().item():.6f}')
         # (3). Append primal and dual loss to list
         # primal_loss_GI.append(primal(netI, netG, netD, z).cpu().item())
@@ -98,21 +99,21 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
             fake_z = netI(x)
-            fake_x = netG(z)
+            # fake_x = netG(z)
             netD.zero_grad()
             cost_D = D_loss(netI, netG, netD, z, fake_z)
-            images, y = next_batch(data, train_loader)
+            images, _ = next_batch(data, train_loader)
             x = images.view(len(images), nc * img_size ** 2).to(device)
             z = torch.randn(len(images), z_dim).to(device)
-            fake_z = netI(x)
+            # fake_z = netI(x)
             gp_D = gradient_penalty_dual(x.data, z.data, netD, netG, netI)
             dual_cost = cost_D + lambda_gp * gp_D
             dual_cost.backward()
             optim_D.step()
             # loss_mmd.append(mmd.cpu().item())
         if trace:
-            print(f'D: {cost_D.cpu().item():.6f}')
-            print(f'gp: {lambda_gp * gp_D.cpu().item():.6f}')
+            print(f'D:   {cost_D.cpu().item():.6f}')
+            print(f'gp:  {lambda_gp * gp_D.cpu().item():.6f}')
         # gp.append(gp_D.cpu().item())
         # re.append(primal(netI, netG, netD, z).cpu().item())
         # if (epoch+1) % 5 == 0:
@@ -134,7 +135,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
         idxs2 = idxs2.int()
         train_data2 = torch.utils.data.Subset(train_gen, idxs2)
         train_loader2  = DataLoader(train_data2, batch_size=batch_size)
-
+        data2 = iter(train_loader2)
+        
         # 3. Update I network
         # (1). Set up parameters of I to update
         #      set up parameters of G, D to freeze
@@ -144,9 +146,11 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             p.requires_grad = True
         for p in netG.parameters():
             p.requires_grad = False
-        
-        for i, batch in enumerate(train_loader2):
-            x, _ = batch
+            
+        for _ in range(critic_iter_p):
+        # for i, batch in enumerate(train_loader2):
+            images, _ = next_batch(data2, train_loader2)
+            x = images.view(len(images), nc * img_size ** 2).to(device)
             bs = len(x)
             
             z = torch.ones(bs, z_dim, 1, 1, device = device) * eta
@@ -157,11 +161,13 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             loss_power = lambda_power * I_loss(fake_z, z.reshape(bs, z_dim))
             loss_power.backward()
             optim_I.step()
+        if type(lr_decay) is int:
+            scheduler_I.step()
+            scheduler_G.step()
+            scheduler_D.step()
         if trace:
             print(f'power: {loss_power.cpu().item():.6f}')
-        # scheduler_I.step()
-        # scheduler_G.step()
-        # scheduler_D.step()
+
 
 
 
@@ -225,7 +231,7 @@ def visualize_p(all_p_vals, present_label, all_label, missing_label, nz, classes
     plt.savefig('size_power.pdf', dpi=150)
     plt.show()
 
-def visualize_fake_T(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
+def visualize_T(all_fake_Cs, present_label, all_label, missing_label, nz, classes):
     
     print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
     

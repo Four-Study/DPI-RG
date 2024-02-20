@@ -12,7 +12,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 gpu = 0
-
 # loss function for D update:
 def D_loss(netI, netG, netD, z, fake_z):
     post_z = netI(netG(z))
@@ -30,9 +29,6 @@ def GI_loss(netI, netG, netD, z, fake_z, p=2):
     # sz = real_data.shape[0]
     losses = l2 + netD(post_z) - netD(fake_z)
     return losses.mean()
-
-# loss function for I update in power section
-I_loss = nn.MSELoss()
 
 # reconstruction for z
 def rec_z(netG, netI, z):
@@ -140,10 +136,72 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
             stat = stat + res1 - res2
         return stat
 
+# loss function for I update in power section
+
+class ExponentialMSELoss(nn.Module):
+    def __init__(self, exponent):
+        """
+        Initialize the loss function with an exponent.
+        
+        Parameters:
+        exponent (float): The exponent to apply to the squared errors.
+        """
+        super(ExponentialMSELoss, self).__init__()
+        self.exponent = exponent
+
+    def forward(self, output, target):
+        """
+        Forward pass for the loss function.
+        
+        Parameters:
+        output (torch.Tensor): The output tensor from the model (predictions).
+        target (torch.Tensor): The target tensor.
+        
+        Returns:
+        torch.Tensor: The calculated loss.
+        """
+        squared_errors = (output - target) ** 2
+        exponential_errors = torch.exp(squared_errors * self.exponent) - 1
+        return exponential_errors.mean()
+
+
+class ModifiedHuberLoss(nn.Module):
+    def __init__(self, delta):
+        """
+        Initialize the Modified Huber Loss function with a delta value.
+        
+        Parameters:
+        delta (float): The threshold at which to change from quadratic to linear loss.
+        """
+        super(ModifiedHuberLoss, self).__init__()
+        self.delta = delta
+
+    def forward(self, output, target):
+        """
+        Forward pass for the Modified Huber Loss function.
+        
+        Parameters:
+        output (torch.Tensor): The output tensor from the model (predictions).
+        target (torch.Tensor): The target tensor.
+        
+        Returns:
+        torch.Tensor: The calculated loss.
+        """
+        error = output - target
+        is_small_error = torch.abs(error) < self.delta
+        quadratic = 0.5 * error**2
+        linear = self.delta * (torch.abs(error) - 0.5 * self.delta)
+        return torch.where(is_small_error, quadratic, linear).mean()
+
+# I_loss = nn.MSELoss()
+# I_loss = ExponentialMSELoss(exponent=0.1)
+I_loss = ModifiedHuberLoss(delta=1.0)
+
+
 # *** Power Penalty ***
 # power penalty for netI
-def power_penalty_D(x, eta, netI):
-    z_hat = netI(x)
-    target = eta * torch.ones(len(z_hat))
-    l2 = torch.norm(z_hat - target, p=2)
-    return l2
+# def power_penalty_D(x, eta, netI):
+#     z_hat = netI(x)
+#     target = eta * torch.ones(len(z_hat))
+#     l2 = torch.norm(z_hat - target, p=2)
+#     return l2
