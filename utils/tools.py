@@ -47,6 +47,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
     
     ## training for this label started
     for epoch in range(start_epoch, end_epoch):
+        print(f'Epoch = {epoch}')
         ## first train in null hypothesis
         data = iter(train_loader)
         # 1. Update G, I network
@@ -79,8 +80,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             optim_G.step()
         # print('GI: '+str(primal(netI, netG, netD, real_data).cpu().item()))
         if trace:
-            print(f'GI:  {cost_GI.cpu().item():.6f}')
-            print(f'MMD: {lambda_mmd * mmd.cpu().item():.6f}')
+            print(f'GI loss:  {cost_GI.cpu().item():.6f}')
+            print(f'MMD loss: {lambda_mmd * mmd.cpu().item():.6f}')
         # (3). Append primal and dual loss to list
         # primal_loss_GI.append(primal(netI, netG, netD, z).cpu().item())
         # dual_loss_GI.append(dual(netI, netG, netD, z, fake_z).cpu().item())
@@ -112,8 +113,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             optim_D.step()
             # loss_mmd.append(mmd.cpu().item())
         if trace:
-            print(f'D:   {cost_D.cpu().item():.6f}')
-            print(f'gp:  {lambda_gp * gp_D.cpu().item():.6f}')
+            print(f'D loss:   {cost_D.cpu().item():.6f}')
+            print(f'gp loss:  {lambda_gp * gp_D.cpu().item():.6f}')
         # gp.append(gp_D.cpu().item())
         # re.append(primal(netI, netG, netD, z).cpu().item())
         # if (epoch+1) % 5 == 0:
@@ -166,7 +167,8 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
             scheduler_G.step()
             scheduler_D.step()
         if trace:
-            print(f'power: {loss_power.cpu().item():.6f}')
+            print(f'power loss: {loss_power.cpu().item():.6f}')
+        
 
 
 

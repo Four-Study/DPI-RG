@@ -138,31 +138,31 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
 
 # loss function for I update in power section
 
-class ExponentialMSELoss(nn.Module):
-    def __init__(self, exponent):
-        """
-        Initialize the loss function with an exponent.
+# class ExponentialMSELoss(nn.Module):
+#     def __init__(self, exponent):
+#         """
+#         Initialize the loss function with an exponent.
         
-        Parameters:
-        exponent (float): The exponent to apply to the squared errors.
-        """
-        super(ExponentialMSELoss, self).__init__()
-        self.exponent = exponent
+#         Parameters:
+#         exponent (float): The exponent to apply to the squared errors.
+#         """
+#         super(ExponentialMSELoss, self).__init__()
+#         self.exponent = exponent
 
-    def forward(self, output, target):
-        """
-        Forward pass for the loss function.
+#     def forward(self, output, target):
+#         """
+#         Forward pass for the loss function.
         
-        Parameters:
-        output (torch.Tensor): The output tensor from the model (predictions).
-        target (torch.Tensor): The target tensor.
+#         Parameters:
+#         output (torch.Tensor): The output tensor from the model (predictions).
+#         target (torch.Tensor): The target tensor.
         
-        Returns:
-        torch.Tensor: The calculated loss.
-        """
-        squared_errors = (output - target) ** 2
-        exponential_errors = torch.exp(squared_errors * self.exponent) - 1
-        return exponential_errors.mean()
+#         Returns:
+#         torch.Tensor: The calculated loss.
+#         """
+#         squared_errors = (output - target) ** 2
+#         exponential_errors = torch.exp(squared_errors * self.exponent) - 1
+#         return exponential_errors.mean()
 
 
 class ModifiedHuberLoss(nn.Module):
