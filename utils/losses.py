@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-gpu = 0
+gpu = 2
 # loss function for D update:
 def D_loss(netI, netG, netD, z, fake_z):
     post_z = netI(netG(z))
@@ -116,7 +116,7 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
         #
         res1 = torch.exp(-dists_zh/2./sigma2_k)
         res1 = res1 + torch.exp(-dists_z/2./sigma2_k)
-        res1 = torch.mul(res1, 1. - torch.eye(n).cuda())
+        res1 = torch.mul(res1, 1. - torch.eye(n).cuda(gpu))
         res1 = res1.sum() / (n*n-n)
         res2 = torch.exp(-dists/2./sigma2_k)
         res2 = res2.sum()*2./(n*n)
@@ -129,7 +129,7 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
         for scale in [.1, .2, .5, 1., 2., 5., 10.]:
             C = Cbase * scale
             res1 = C / (C + dists_z) + C / (C + dists_zh)
-            res1 = torch.mul(res1, 1. - torch.eye(n).cuda())
+            res1 = torch.mul(res1, 1. - torch.eye(n).cuda(gpu))
             res1 = res1.sum() / (n*n-n)
             res2 = C / (C + dists)
             res2 = res2.sum()*2./(n*n)

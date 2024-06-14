@@ -47,7 +47,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
     
     ## training for this label started
     for epoch in range(start_epoch, end_epoch):
-        print(f'Epoch = {epoch}')
+        # print(f'Epoch = {epoch}')
         ## first train in null hypothesis
         data = iter(train_loader)
         # 1. Update G, I network
