@@ -22,7 +22,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
              z_dim, device, lab, present_label, all_label, 
              lambda_gp, lambda_power, lambda_mmd = 3.0, eta = 3, 
              sample_sizes = None, sampled_idxs = None, 
-             img_size = 28, nc = 1, critic_iter = 10, critic_iter_d = 10, critic_iter_p = 5,
+             img_size = 28, nc = 1, critic_iter = 10, critic_iter_d = 10, critic_iter_p = 10,
              lr_decay = None, trace = False):
 
     imbalanced = True
@@ -47,7 +47,7 @@ def train_al(netI, netG, netD, optim_I, optim_G, optim_D,
     
     ## training for this label started
     for epoch in range(start_epoch, end_epoch):
-        # print(f'Epoch = {epoch}')
+        print(f'Epoch = {epoch}')
         ## first train in null hypothesis
         data = iter(train_loader)
         # 1. Update G, I network
