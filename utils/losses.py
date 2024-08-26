@@ -1,4 +1,4 @@
-import matplotlib
+# import matplotlib
 # matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-gpu = 2
+gpu = 0
 # loss function for D update:
 def D_loss(netI, netG, netD, z, fake_z):
     post_z = netI(netG(z))

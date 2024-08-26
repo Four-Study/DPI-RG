@@ -1,3 +1,4 @@
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 # import os
@@ -13,13 +14,13 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 import torchvision.datasets as dsets
-from losses import *
-from ..models import I_MNIST, G_MNIST, D_MNIST
+from .losses import *
+from .mnist import I_MNIST, G_MNIST, D_MNIST
 
 
 class RoundtripModel:
     def __init__(self, z_dim, lr_GI, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
-                 img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, lr_decay=None, device=None):
+                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, device=None, timestamp=None):
         self.z_dim = z_dim
         self.lr_GI = lr_GI
         self.lr_D = lr_D
@@ -36,16 +37,16 @@ class RoundtripModel:
         self.critic_iter = critic_iter
         self.critic_iter_d = critic_iter_d
         self.critic_iter_p = critic_iter_p
-        self.lr_decay = lr_decay
-        self.timestamp = datetime.now().strftime("%m_%d_%H%M")
+        self.decay_epochs = decay_epochs
+        self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M") if timestamp is None else timestamp  
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.models = {}
         self.optimizers = {}
         self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
         self.train_gen = dsets.FashionMNIST(root="./datasets", train=True, transform=self.transform, download=True)
         self.test_gen = dsets.FashionMNIST(root="./datasets", train=False, transform=self.transform, download=True)
-        self.present_label = list(range(10))
-        self.missing_label = []
+        self.present_label = present_label
+        self.missing_label = missing_label
         self.all_label = self.present_label + self.missing_label
         self.T_trains = []
 
@@ -54,9 +55,6 @@ class RoundtripModel:
         netG = G_MNIST(nz=self.z_dim).to(self.device)
         netD = D_MNIST(nz=self.z_dim).to(self.device)
         netI, netG, netD = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netD)
-
-        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
-        netI.load_state_dict(torch.load(model_save_file))
 
         self.models[label] = {'I': netI, 'G': netG, 'D': netD}
         self.optimizers[label] = {
@@ -67,6 +65,8 @@ class RoundtripModel:
 
     def train(self):
         for label in self.present_label:
+
+            print(f"{'-'*100}\nStart to train label: {label}\n{'-'*100}")
             self.initialize_model(label)
             train_loader = self.get_data_loader(label)
 
@@ -76,7 +76,7 @@ class RoundtripModel:
 
             # First round of training
             self.train_label(
-                netI, netG, netD, optim_I, optim_G, optim_D,
+                label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, 0, self.epochs1,
                 sample_sizes=None, trace=True
             )
@@ -96,15 +96,16 @@ class RoundtripModel:
 
             # Second round of training with new sample sizes
             self.train_label(
-                netI, netG, netD, optim_I, optim_G, optim_D,
+                label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, self.epochs1, self.epochs2,
                 sample_sizes=sample_sizes, trace=True
             )
 
             # Save the trained model
             self.save_model(label)
+            print(f"{'-'*100}\nFinish to train label: {label}\n{'-'*100}")
 
-    def train_label(self, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
+    def train_label(self, label, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
             sample_sizes=None, sampled_idxs=None, trace=False):
 
         imbalanced = True
@@ -122,10 +123,10 @@ class RoundtripModel:
             sample_sizes = [int(len(train_loader.dataset.indices) / len(self.present_label))] * (len(self.present_label) - 1)
             
         # Learning rate schedulers
-        if isinstance(self.lr_decay, int):
-            scheduler_I = StepLR(optim_I, step_size=self.lr_decay, gamma=0.2)
-            scheduler_G = StepLR(optim_G, step_size=self.lr_decay, gamma=0.2)
-            scheduler_D = StepLR(optim_D, step_size=self.lr_decay, gamma=0.2)
+        if isinstance(self.decay_epochs, int):
+            scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=0.2)
+            scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=0.2)
+            scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=0.2)
         
         # Training for this label started
         for epoch in range(start_epoch, end_epoch):
@@ -192,7 +193,7 @@ class RoundtripModel:
             idxs2 = torch.Tensor([])
             count = 0
             for cur_lab in self.present_label:
-                if cur_lab != self.lab:
+                if cur_lab != label:
                     temp = sampled_idxs[cur_lab]
                     idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[count], replace=imbalanced)]])
                     count += 1
@@ -222,7 +223,7 @@ class RoundtripModel:
                 loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
                 loss_power.backward()
                 optim_I.step()
-            if isinstance(self.lr_decay, int):
+            if isinstance(self.decay_epochs, int):
                 scheduler_I.step()
                 scheduler_G.step()
                 scheduler_D.step()
@@ -291,9 +292,12 @@ class RoundtripModel:
         model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
-    def validate(self):
+    def validate(self, timestamp=None):
         all_p_vals = []
         all_fake_Ts = []
+
+        if timestamp is None:
+            timestamp = self.timestamp
 
         for lab in self.all_label:
             if torch.is_tensor(self.test_gen.targets):
@@ -312,7 +316,7 @@ class RoundtripModel:
                 em_len = len(T_train)
                 netI = I_MNIST(nz=self.z_dim).to(self.device)  # Adjusted for MNIST; replace if using different model
                 netI = torch.nn.DataParallel(netI)
-                model_save_file = f'fmnist_param/{self.timestamp}_class{self.present_label[pidx]}.pt'
+                model_save_file = f'fmnist_param/{timestamp}_class{self.present_label[pidx]}.pt'
                 netI.load_state_dict(torch.load(model_save_file))
 
                 for i, batch in enumerate(test_loader):
