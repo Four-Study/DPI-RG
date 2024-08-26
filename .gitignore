@@ -9,3 +9,4 @@ _utils/*
 *.pkl
 *.pdf
 *.log
+*.ipynb
