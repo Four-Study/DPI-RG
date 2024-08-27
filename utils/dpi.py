@@ -18,7 +18,7 @@ from .losses import *
 from .mnist import I_MNIST, G_MNIST, D_MNIST
 
 
-class RoundtripModel:
+class DPI:
     def __init__(self, z_dim, lr_GI, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
                  present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, device=None, timestamp=None):
         self.z_dim = z_dim
