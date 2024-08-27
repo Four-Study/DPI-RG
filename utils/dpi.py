@@ -1,7 +1,7 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-# import os
+import os
 # import urllib
 # import gzip
 # import pickle
@@ -39,7 +39,6 @@ class DPI:
         self.critic_iter_p = critic_iter_p
         self.decay_epochs = decay_epochs
         self.gamma = gamma
-        self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M") if timestamp is None else timestamp  
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.models = {}
         self.optimizers = {}
@@ -51,7 +50,30 @@ class DPI:
         self.all_label = self.present_label + self.missing_label
         self.T_trains = []
 
+        # Set timestamp and mode
+        if timestamp is None:
+            self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M")
+            self.inference_only = False  # Indicates we are in training mode
+        else:
+            self.timestamp = timestamp
+            self.inference_only = True  # Indicates we are in inference mode
+
+        # Initialize or load models based on the mode
+        self.setup_models()
+
+    def setup_models(self):
+        """Setup models based on the mode (training or inference)."""
+        if self.inference_only:
+            print("Setting up models for inference mode.")
+            for label in self.present_label:
+                self.load_inference_model(label)  # Load "I" model for inference
+        else:
+            print("Setting up models for training mode.")
+            for label in self.present_label:
+                self.initialize_model(label)  # Initialize "I", "G", "D" for training
+
     def initialize_model(self, label):
+        """Initialize 'I', 'G', 'D' models for a given label for training."""
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netG = G_MNIST(nz=self.z_dim).to(self.device)
         netD = D_MNIST(nz=self.z_dim).to(self.device)
@@ -64,22 +86,44 @@ class DPI:
             'D': optim.Adam(netD.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
-    def train(self):
-        for label in self.present_label:
+    def load_inference_model(self, label):
+        """Load the pre-trained 'I' model for inference."""
+        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
+        netI = I_MNIST(nz=self.z_dim).to(self.device)
+        netI = nn.DataParallel(netI)
+        try:
+            netI.load_state_dict(torch.load(model_save_file))
+            self.models[label] = {'I': netI}
+            print(f"Successfully loaded model for label {label} from {model_save_file}.")
+        except Exception as e:
+            raise FileNotFoundError(f"Failed to load model for label {label} at {model_save_file}. Error: {e}")
 
+
+    def train(self):
+        """Train models for each present label."""
+        if self.inference_only:
+            print("Training is not allowed when a timestamp is provided. Exiting the train method.")
+            return
+
+        for label in self.present_label:
             print(f"{'-'*100}\nStart to train label: {label}\n{'-'*100}")
-            self.initialize_model(label)
+
             train_loader = self.get_data_loader(label)
 
             # Retrieve models and optimizers for the current label
             netI, netG, netD = self.models[label]['I'], self.models[label]['G'], self.models[label]['D']
             optim_I, optim_G, optim_D = self.optimizers[label]['I'], self.optimizers[label]['G'], self.optimizers[label]['D']
+            
+            # Initialize lists to store losses
+            GI_losses, MMD_losses, D_losses, GP_losses, Power_losses = [], [], [], [], []
 
             # First round of training
             self.train_label(
                 label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, 0, self.epochs1,
-                sample_sizes=None, trace=True
+                sample_sizes=None, trace=True,
+                GI_losses=GI_losses, MMD_losses=MMD_losses,
+                D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
             )
 
             # Get fake_zs for further training or analysis
@@ -87,7 +131,6 @@ class DPI:
 
             # Calculate empirical distribution T_train
             T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-            self.T_trains.append(T_train)
 
             # Compute powers and new sample sizes
             sample_sizes = self.compute_powers_and_sizes(T_train, label)
@@ -99,15 +142,31 @@ class DPI:
             self.train_label(
                 label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, self.epochs1, self.epochs2,
-                sample_sizes=sample_sizes, trace=True
+                sample_sizes=sample_sizes, trace=True,
+                GI_losses=GI_losses, MMD_losses=MMD_losses,
+                D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
             )
-
             # Save the trained model
             self.save_model(label)
+
+            # Get fake_zs for further training or analysis
+            fake_zs = self.get_fake_zs(label, train_loader)
+
+            # Calculate empirical distribution T_train
+            T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+            self.T_trains.append(T_train)
+
+            # Save the loss plots to the graphs folder
+            self.save_loss_plots(label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses)
             print(f"{'-'*100}\nFinish to train label: {label}\n{'-'*100}")
 
     def train_label(self, label, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
             sample_sizes=None, sampled_idxs=None, trace=False):
+        
+        # ## set the models to train mode
+        # netI.train()
+        # netG.train()
+        # netD.train()
 
         imbalanced = True
         if sampled_idxs is None:
@@ -293,32 +352,42 @@ class DPI:
         model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
-    def validate(self, timestamp=None):
+    def validate(self):
         all_p_vals = []
         all_fake_Ts = []
 
-        if timestamp is None:
-            timestamp = self.timestamp
+        # Check if T_trains is empty and generate it if necessary
+        if self.inference_only:
+            for lab in self.present_label:
+                idxs = torch.where(torch.Tensor(self.train_gen.targets) == lab)[0]
+                train_data = torch.utils.data.Subset(self.train_gen, idxs)
+                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+                
+                # Get fake_zs for further training or analysis
+                fake_zs = self.get_fake_zs(lab, train_loader)
+                
+                # Calculate empirical distribution T_train
+                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+                self.T_trains.append(T_train)
 
         for lab in self.all_label:
             if torch.is_tensor(self.test_gen.targets):
-                idxs2 = torch.where(self.test_gen.targets == lab)[0]
+                idxs = torch.where(self.test_gen.targets == lab)[0]
             else:
-                idxs2 = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
-            test_data = torch.utils.data.Subset(self.test_gen, idxs2)
+                idxs = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
+            test_data = torch.utils.data.Subset(self.test_gen, idxs)
             test_loader = DataLoader(test_data, batch_size=self.batch_size, shuffle=False)
 
-            # p_vals and fake_Ts store p-values, fake latent values for the current iteration
-            fake_Ts = torch.zeros(len(self.present_label), len(idxs2))
-            p_vals = torch.zeros(len(self.present_label), len(idxs2))
+            # Initialize p_vals and fake_Ts for the current iteration
+            fake_Ts = torch.zeros(len(self.present_label), len(idxs))
+            p_vals = torch.zeros(len(self.present_label), len(idxs))
 
-            for pidx in range(len(self.present_label)):
+            for pidx, present_label in enumerate(self.present_label):
                 T_train = self.T_trains[pidx]
                 em_len = len(T_train)
-                netI = I_MNIST(nz=self.z_dim).to(self.device)  # Adjusted for MNIST; replace if using different model
-                netI = torch.nn.DataParallel(netI)
-                model_save_file = f'fmnist_param/{timestamp}_class{self.present_label[pidx]}.pt'
-                netI.load_state_dict(torch.load(model_save_file))
+                
+                # Use the preloaded "I" model from self.models
+                netI = self.models[present_label]['I']
 
                 for i, batch in enumerate(test_loader):
                     images, y = batch
@@ -339,7 +408,7 @@ class DPI:
         self.visualize_p(all_p_vals, classes=self.train_gen.classes)
 
     def visualize_p(self, all_p_vals, classes):
-        print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
+        # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
         present_label = self.present_label
         all_label = self.all_label
 
@@ -390,10 +459,10 @@ class DPI:
         fig.supxlabel('Validating', fontsize = 25)
         fig.tight_layout()
         fig.savefig('graphs/size_power.pdf', dpi=150)
-        # plt.show()
+        
 
     def visualize_T(self, all_fake_Cs, classes):
-        print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
+        # print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
         present_label = self.present_label
         all_label = self.all_label
         
@@ -437,4 +506,22 @@ class DPI:
         fig.supxlabel('Validating', fontsize = 25)
         fig.tight_layout()
         fig.savefig('graphs/fake_T.pdf', dpi=150)
-        # plt.show()
+
+    def save_loss_plots(self, label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses):
+        """Save the losses for the training process to the graphs folder."""
+        # Ensure the graphs directory exists
+        os.makedirs('graphs', exist_ok=True)
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(GI_losses, label='GI Loss')
+        plt.plot(MMD_losses, label='MMD Loss')
+        plt.plot(D_losses, label='D Loss')
+        plt.plot(GP_losses, label='GP Loss')
+        plt.plot(Power_losses, label='Power Loss')
+        plt.xlabel('Iteration')
+        plt.ylabel('Loss')
+        plt.title(f'Training Losses for Label {label}')
+        plt.legend()
+        # Save the plot instead of showing it
+        plt.savefig(f'graphs/losses_class{label}.png')
+        plt.close()
