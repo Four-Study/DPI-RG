@@ -20,7 +20,7 @@ from .mnist import I_MNIST, G_MNIST, D_MNIST
 
 class DPI:
     def __init__(self, z_dim, lr_GI, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
-                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, device=None, timestamp=None):
+                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
         self.z_dim = z_dim
         self.lr_GI = lr_GI
         self.lr_D = lr_D
@@ -38,6 +38,7 @@ class DPI:
         self.critic_iter_d = critic_iter_d
         self.critic_iter_p = critic_iter_p
         self.decay_epochs = decay_epochs
+        self.gamma = gamma
         self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M") if timestamp is None else timestamp  
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.models = {}
@@ -124,9 +125,9 @@ class DPI:
             
         # Learning rate schedulers
         if isinstance(self.decay_epochs, int):
-            scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=0.2)
-            scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=0.2)
-            scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=0.2)
+            scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=self.gamma)
+            scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=self.gamma)
+            scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=self.gamma)
         
         # Training for this label started
         for epoch in range(start_epoch, end_epoch):
@@ -334,11 +335,11 @@ class DPI:
             all_fake_Ts.append(np.array(fake_Ts))
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, missing_label=[], classes=self.train_gen.classes)
-        self.visualize_p(all_p_vals, missing_label=[], classes=self.train_gen.classes)
+        self.visualize_T(all_fake_Ts, classes=self.train_gen.classes)
+        self.visualize_p(all_p_vals, classes=self.train_gen.classes)
 
     def visualize_p(self, all_p_vals, classes):
-        print('-'*130, '\n', ' ' * 60, 'p-values', '\n', '-'*130, sep = '')
+        print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
         present_label = self.present_label
         all_label = self.all_label
 
