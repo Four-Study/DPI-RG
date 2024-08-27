@@ -90,7 +90,7 @@ class DPI:
             self.T_trains.append(T_train)
 
             # Compute powers and new sample sizes
-            powers, sample_sizes = self.compute_powers_and_sizes(T_train, label)
+            sample_sizes = self.compute_powers_and_sizes(T_train, label)
 
             # Freeze batch normalization layers before the second round of training
             self.freeze_batch_norm_layers(netI)
@@ -147,7 +147,7 @@ class DPI:
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 z = torch.randn(len(images), self.z_dim).to(self.device)
                 fake_z = netI(x)
-                fake_x = netG(z)
+                # fake_x = netG(z)
                 netI.zero_grad()
                 netG.zero_grad()
                 cost_GI = GI_loss(netI, netG, netD, z, fake_z)
@@ -268,7 +268,7 @@ class DPI:
 
         sample_sizes = max(powers) - powers + 0.05
         sample_sizes = (sample_sizes / sum(sample_sizes) * len(idxs)).astype(int)
-        return powers, sample_sizes
+        return sample_sizes
 
 
 
@@ -387,9 +387,9 @@ class DPI:
                         axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Testing', fontsize = 25)
+        fig.supxlabel('Validating', fontsize = 25)
         fig.tight_layout()
-        plt.savefig('size_power.pdf', dpi=150)
+        fig.savefig('graphs/size_power.pdf', dpi=150)
         # plt.show()
 
     def visualize_T(self, all_fake_Cs, classes):
@@ -434,7 +434,7 @@ class DPI:
                         axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Testing', fontsize = 25)
-        plt.tight_layout()
-        plt.savefig('fake_T.pdf', dpi=150)
+        fig.supxlabel('Validating', fontsize = 25)
+        fig.tight_layout()
+        fig.savefig('graphs/fake_T.pdf', dpi=150)
         # plt.show()
