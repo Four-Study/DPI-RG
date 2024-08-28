@@ -19,10 +19,11 @@ from .mnist import I_MNIST, G_MNIST, D_MNIST
 
 
 class DPI:
-    def __init__(self, z_dim, lr_GI, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
+    def __init__(self, z_dim, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
                  present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
         self.z_dim = z_dim
-        self.lr_GI = lr_GI
+        self.lr_I = lr_I
+        self.lr_G = lr_G
         self.lr_D = lr_D
         self.weight_decay = weight_decay
         self.batch_size = batch_size
@@ -62,13 +63,13 @@ class DPI:
         self.setup_models()
 
     def setup_models(self):
-        """Setup models based on the mode (training or inference)."""
+        """Setup models based on exitsting files or not."""
         if self.inference_only:
-            print("Setting up models for inference mode.")
+            print("Setting up models from existing files.")
             for label in self.present_label:
                 self.load_inference_model(label)  # Load "I" model for inference
         else:
-            print("Setting up models for training mode.")
+            print("Setting up new models.")
             for label in self.present_label:
                 self.initialize_model(label)  # Initialize "I", "G", "D" for training
 
@@ -81,8 +82,8 @@ class DPI:
 
         self.models[label] = {'I': netI, 'G': netG, 'D': netD}
         self.optimizers[label] = {
-            'I': optim.Adam(netI.parameters(), lr=self.lr_GI, betas=(0.5, 0.999)),
-            'G': optim.Adam(netG.parameters(), lr=self.lr_GI, betas=(0.5, 0.999)),
+            'I': optim.Adam(netI.parameters(), lr=self.lr_I, betas=(0.5, 0.999)),
+            'G': optim.Adam(netG.parameters(), lr=self.lr_G, betas=(0.5, 0.999)),
             'D': optim.Adam(netD.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
@@ -121,7 +122,7 @@ class DPI:
             self.train_label(
                 label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, 0, self.epochs1,
-                sample_sizes=None, trace=True,
+                sample_sizes=None, 
                 GI_losses=GI_losses, MMD_losses=MMD_losses,
                 D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
             )
@@ -142,10 +143,11 @@ class DPI:
             self.train_label(
                 label, netI, netG, netD, optim_I, optim_G, optim_D,
                 train_loader, self.epochs1, self.epochs2,
-                sample_sizes=sample_sizes, trace=True,
+                sample_sizes=sample_sizes, 
                 GI_losses=GI_losses, MMD_losses=MMD_losses,
                 D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
             )
+
             # Save the trained model
             self.save_model(label)
 
@@ -161,12 +163,8 @@ class DPI:
             print(f"{'-'*100}\nFinish to train label: {label}\n{'-'*100}")
 
     def train_label(self, label, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
-            sample_sizes=None, sampled_idxs=None, trace=False):
-        
-        # ## set the models to train mode
-        # netI.train()
-        # netG.train()
-        # netD.train()
+            sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
+                D_losses=[], GP_losses=[], Power_losses=[]):
 
         imbalanced = True
         if sampled_idxs is None:
@@ -190,7 +188,8 @@ class DPI:
         
         # Training for this label started
         for epoch in range(start_epoch, end_epoch):
-            print(f'Epoch = {epoch}')
+            if epoch % ((end_epoch - start_epoch) // 4) == 0 or epoch == end_epoch:
+                print(f'Epoch = {epoch}')
             data = iter(train_loader)
             
             # 1. Update G, I network
@@ -219,9 +218,9 @@ class DPI:
                 primal_cost.backward()
                 optim_I.step()
                 optim_G.step()
-            if trace:
-                print(f'GI loss:  {cost_GI.cpu().item():.6f}')
-                print(f'MMD loss: {self.lambda_mmd * mmd.cpu().item():.6f}')
+
+            GI_losses.append(cost_GI.cpu().item())
+            MMD_losses.append(self.lambda_mmd * mmd.cpu().item())
             
             # 2. Update D network
             for p in netD.parameters():
@@ -245,9 +244,9 @@ class DPI:
                 dual_cost = cost_D + self.lambda_gp * gp_D
                 dual_cost.backward()
                 optim_D.step()
-            if trace:
-                print(f'D loss:   {cost_D.cpu().item():.6f}')
-                print(f'gp loss:  {self.lambda_gp * gp_D.cpu().item():.6f}')
+                
+            D_losses.append(cost_D.cpu().item())
+            GP_losses.append(self.lambda_gp * gp_D.cpu().item())
             
             # Train in alternative hypothesis
             idxs2 = torch.Tensor([])
@@ -287,8 +286,9 @@ class DPI:
                 scheduler_I.step()
                 scheduler_G.step()
                 scheduler_D.step()
-            if trace:
-                print(f'power loss: {loss_power.cpu().item():.6f}')
+
+            Power_losses.append(loss_power.cpu().item())
+            
 
     def get_data_loader(self, label):
         idxs = torch.where(self.train_gen.targets == label)[0]
@@ -458,7 +458,8 @@ class DPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validating', fontsize = 25)
         fig.tight_layout()
-        fig.savefig('graphs/size_power.pdf', dpi=150)
+        fig.savefig(f'graphs/{self.timestamp}_size_power.png', dpi=150)
+        plt.close(fig)
         
 
     def visualize_T(self, all_fake_Cs, classes):
@@ -505,7 +506,8 @@ class DPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validating', fontsize = 25)
         fig.tight_layout()
-        fig.savefig('graphs/fake_T.pdf', dpi=150)
+        fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
+        plt.close(fig)
 
     def save_loss_plots(self, label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses):
         """Save the losses for the training process to the graphs folder."""
@@ -513,15 +515,19 @@ class DPI:
         os.makedirs('graphs', exist_ok=True)
 
         plt.figure(figsize=(10, 6))
-        plt.plot(GI_losses, label='GI Loss')
-        plt.plot(MMD_losses, label='MMD Loss')
-        plt.plot(D_losses, label='D Loss')
-        plt.plot(GP_losses, label='GP Loss')
-        plt.plot(Power_losses, label='Power Loss')
-        plt.xlabel('Iteration')
+        
+        # Plot with high contrast colors and different line styles without markers
+        plt.plot(GI_losses, label='GI Loss', color='black', linestyle='-')    # Black, solid line
+        plt.plot(MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
+        plt.plot(D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
+        # plt.plot(GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
+        plt.plot(Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
+
+        plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        plt.title(f'Training Losses for Label {label}')
+        plt.title(f'Training Losses for Class {label}')
         plt.legend()
+        
         # Save the plot instead of showing it
-        plt.savefig(f'graphs/losses_class{label}.png')
+        plt.savefig(f'graphs/{self.timestamp}_losses_class{label}.png')
         plt.close()
