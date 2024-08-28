@@ -185,50 +185,14 @@ class DPI:
             scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=self.gamma)
             scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=self.gamma)
             scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=self.gamma)
-        
+
         # Training for this label started
-        for epoch in range(start_epoch, end_epoch):
-            if epoch % max(self.epochs2 // 4, 1) == 0 or epoch == (self.epochs2 - 1):
+        for epoch in range(start_epoch + 1, end_epoch + 1):
+            if (epoch - 1) % max(self.epochs2 // 4, 1) == 0 or epoch == self.epochs2:
                 print(f'Epoch = {epoch}')
             data = iter(train_loader)
-
-            # Train in alternative hypothesis
-            idxs2 = torch.Tensor([])
-            for cur_lab in self.present_label:
-                if cur_lab != label:
-                    temp = sampled_idxs[cur_lab]
-                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
-            idxs2 = idxs2.int()
-            train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
-            train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
-            data2 = iter(train_loader2)
             
-            # 1. Update I network
-            for p in netD.parameters():
-                p.requires_grad = False
-            for p in netI.parameters():
-                p.requires_grad = True
-            for p in netG.parameters():
-                p.requires_grad = False
-                
-            for _ in range(self.critic_iter_p):
-                images, _ = self.next_batch(data2, train_loader2)
-                x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                bs = len(x)
-                
-                z = torch.ones(bs, self.z_dim, 1, 1, device=self.device) * self.eta
-                x = x.to(self.device)
-                fake_z = netI(x)
-
-                netI.zero_grad()
-                loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
-                loss_power.backward()
-                optim_I.step()
-
-
-            Power_losses.append(loss_power.cpu().item())
-            
-            # 2. Update G, I network
+            # 1. Update G, I network
             for p in netD.parameters():
                 p.requires_grad = False
             for p in netI.parameters():
@@ -258,7 +222,7 @@ class DPI:
             GI_losses.append(cost_GI.cpu().item())
             MMD_losses.append(self.lambda_mmd * mmd.cpu().item())
             
-            # 3. Update D network
+            # 2. Update D network
             for p in netD.parameters():
                 p.requires_grad = True
             for p in netI.parameters():
@@ -283,6 +247,41 @@ class DPI:
                 
             D_losses.append(cost_D.cpu().item())
             GP_losses.append(self.lambda_gp * gp_D.cpu().item())
+
+            # Train in alternative hypothesis
+            idxs2 = torch.Tensor([])
+            for cur_lab in self.present_label:
+                if cur_lab != label:
+                    temp = sampled_idxs[cur_lab]
+                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
+            idxs2 = idxs2.int()
+            train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
+            train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
+            data2 = iter(train_loader2)
+            
+            # 3. Update I network
+            for p in netD.parameters():
+                p.requires_grad = False
+            for p in netI.parameters():
+                p.requires_grad = True
+            for p in netG.parameters():
+                p.requires_grad = False
+                
+            for _ in range(self.critic_iter_p):
+                images, _ = self.next_batch(data2, train_loader2)
+                x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
+                bs = len(x)
+                
+                z = torch.ones(bs, self.z_dim, 1, 1, device=self.device) * self.eta
+                x = x.to(self.device)
+                fake_z = netI(x)
+
+                netI.zero_grad()
+                loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
+                loss_power.backward()
+                optim_I.step()
+
+            Power_losses.append(loss_power.cpu().item())
             
             if isinstance(self.decay_epochs, int):
                 scheduler_I.step()
