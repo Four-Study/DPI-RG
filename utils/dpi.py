@@ -49,7 +49,7 @@ class DPI:
         self.present_label = present_label
         self.missing_label = missing_label
         self.all_label = self.present_label + self.missing_label
-        self.T_trains = []
+        self.T_trains = {}  
 
         # Set timestamp and mode
         if timestamp is None:
@@ -156,7 +156,7 @@ class DPI:
 
             # Calculate empirical distribution T_train
             T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-            self.T_trains.append(T_train)
+            self.T_trains[label] = T_train
 
             # Save the loss plots to the graphs folder
             self.save_loss_plots(label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses)
@@ -169,16 +169,16 @@ class DPI:
         imbalanced = True
         if sampled_idxs is None:
             imbalanced = False
-            sampled_idxs = []
+            sampled_idxs = {}
             for cur_lab in self.present_label:
                 if torch.is_tensor(self.train_gen.targets):
                     temp = torch.where(self.train_gen.targets == cur_lab)[0] 
                 else:
                     temp = torch.where(torch.Tensor(self.train_gen.targets) == cur_lab)[0] 
-                sampled_idxs.append(temp)
+                sampled_idxs[cur_lab] = temp
                 
         if sample_sizes is None:
-            sample_sizes = [int(len(train_loader.dataset.indices) / len(self.present_label))] * (len(self.present_label) - 1)
+            sample_sizes = {cur_lab: int(len(train_loader.dataset.indices) / len(self.present_label)) for cur_lab in self.present_label if cur_lab != label}
             
         # Learning rate schedulers
         if isinstance(self.decay_epochs, int):
@@ -188,7 +188,7 @@ class DPI:
         
         # Training for this label started
         for epoch in range(start_epoch, end_epoch):
-            if epoch % ((end_epoch - start_epoch) // 4) == 0 or epoch == end_epoch:
+            if epoch % max(self.epochs2 // 4, 1) == 0 or epoch == (self.epochs2 - 1):
                 print(f'Epoch = {epoch}')
             data = iter(train_loader)
             
@@ -250,12 +250,10 @@ class DPI:
             
             # Train in alternative hypothesis
             idxs2 = torch.Tensor([])
-            count = 0
             for cur_lab in self.present_label:
                 if cur_lab != label:
                     temp = sampled_idxs[cur_lab]
-                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[count], replace=imbalanced)]])
-                    count += 1
+                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
             idxs2 = idxs2.int()
             train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
             train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
@@ -306,7 +304,7 @@ class DPI:
         return torch.cat(fake_zs)
 
     def compute_powers_and_sizes(self, T_train, label):
-        powers = []
+        powers = {}
         for cur_lab in self.present_label:
             if cur_lab != label:
                 idxs = torch.where(self.train_gen.targets == cur_lab)[0]
@@ -323,10 +321,12 @@ class DPI:
                         for j in range(len(fake_z)):
                             p = torch.sum(T_train > T_batch[j]) / len(T_train)
                             p_vals[i * self.batch_size + j] = p.item()
-                powers.append(np.sum(np.array(p_vals) <= 0.05) / len(idxs))
+                powers[cur_lab] = np.sum(np.array(p_vals) <= 0.05) / len(idxs)
 
-        sample_sizes = max(powers) - powers + 0.05
-        sample_sizes = (sample_sizes / sum(sample_sizes) * len(idxs)).astype(int)
+        sample_sizes = {lab: max(powers.values()) - pow + 0.05 for lab, pow in powers.items()}
+        total = sum(sample_sizes.values())
+        sample_sizes = {lab: int((size / total) * len(idxs)) for lab, size in sample_sizes.items()}
+
         return sample_sizes
 
 
@@ -353,8 +353,8 @@ class DPI:
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
     def validate(self):
-        all_p_vals = []
-        all_fake_Ts = []
+        all_p_vals = {}
+        all_fake_Ts = {}
 
         # Check if T_trains is empty and generate it if necessary
         if self.inference_only:
@@ -368,7 +368,7 @@ class DPI:
                 
                 # Calculate empirical distribution T_train
                 T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-                self.T_trains.append(T_train)
+                self.T_trains[lab] = T_train
 
         for lab in self.all_label:
             if torch.is_tensor(self.test_gen.targets):
@@ -379,15 +379,15 @@ class DPI:
             test_loader = DataLoader(test_data, batch_size=self.batch_size, shuffle=False)
 
             # Initialize p_vals and fake_Ts for the current iteration
-            fake_Ts = torch.zeros(len(self.present_label), len(idxs))
-            p_vals = torch.zeros(len(self.present_label), len(idxs))
+            fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
+            p_vals = {label: torch.zeros(len(idxs)) for label in self.present_label}
 
-            for pidx, present_label in enumerate(self.present_label):
-                T_train = self.T_trains[pidx]
+            for label in self.present_label:
+                T_train = self.T_trains[label]
                 em_len = len(T_train)
                 
                 # Use the preloaded "I" model from self.models
-                netI = self.models[present_label]['I']
+                netI = self.models[label]['I']
 
                 for i, batch in enumerate(test_loader):
                     images, y = batch
@@ -397,15 +397,17 @@ class DPI:
                     for j in range(len(fake_z)):
                         p1 = torch.sum(T_train > T_batch[j]) / em_len
                         p = p1
-                        fake_Ts[pidx, i * self.batch_size + j] = T_batch[j].item()
-                        p_vals[pidx, i * self.batch_size + j] = p.item()
+                        fake_Ts[label][i * self.batch_size + j] = T_batch[j].item()
+                        p_vals[label][i * self.batch_size + j] = p.item()
 
-            all_p_vals.append(np.array(p_vals))
-            all_fake_Ts.append(np.array(fake_Ts))
+            all_p_vals[lab] = {k: v.numpy() for k, v in p_vals.items()}
+            all_fake_Ts[lab] = {k: v.numpy() for k, v in fake_Ts.items()}
 
         # Visualize the results
         self.visualize_T(all_fake_Ts, classes=self.train_gen.classes)
         self.visualize_p(all_p_vals, classes=self.train_gen.classes)
+
+        print('Finish validation.')
 
     def visualize_p(self, all_p_vals, classes):
         # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
@@ -419,11 +421,11 @@ class DPI:
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
 
-            for i in range(len(all_label)):
-                p_vals_class = all_p_vals[i]
+            for i, lab in enumerate(all_label):
+                p_vals_class = all_p_vals[lab]
                 axs[i].set_xlim([0, 1])
-                _ = axs[i].hist(p_vals_class[0, :])
-                prop = np.sum(np.array(p_vals_class[0, :] <= 0.05) / len(p_vals_class[0, :]))
+                _ = axs[i].hist(p_vals_class[present_label[0]])
+                prop = np.sum(np.array(p_vals_class[present_label[0]] <= 0.05) / len(p_vals_class[present_label[0]]))
                 prop = np.round(prop, 4)
                 if all_label[i] == present_label[0]:
                     axs[i].set_title('Type I Error: {}'.format(prop), fontsize = 20)
@@ -439,12 +441,12 @@ class DPI:
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
 
-            for i in range(len(all_label)):
-                p_vals_class = all_p_vals[i]
-                for j in range(len(present_label)):
+            for i, val_lab in enumerate(all_label):
+                p_vals_class = all_p_vals[val_lab]
+                for j, train_lab in enumerate(present_label):
                     axs[j, i].set_xlim([0, 1])
-                    _ = axs[j, i].hist(p_vals_class[j, :])
-                    prop = np.sum(np.array(p_vals_class[j, :] <= 0.05) / len(p_vals_class[j, :]))
+                    _ = axs[j, i].hist(p_vals_class[train_lab])
+                    prop = np.sum(np.array(p_vals_class[train_lab] <= 0.05) / len(p_vals_class[train_lab]))
                     prop = np.round(prop, 4)
                     if all_label[i] == present_label[j]:
                         axs[j, i].set_title('Type I Error: {}'.format(prop), fontsize = 20)
@@ -473,14 +475,14 @@ class DPI:
 
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
-            llim = np.min(all_fake_Cs[0])
-            rlim = np.quantile(all_fake_Cs[0], 0.9)
-            for i in range(len(all_label)):
-                fake_Cs = all_fake_Cs[i]
-                axs[i].set_ylabel(classes[all_label[i]], fontsize = 25)
+            llim = np.min([np.min(vals[present_label[0]]) for vals in all_fake_Cs.values()])
+            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.9)
+            for i, lab in enumerate(all_label):
+                fake_Cs = all_fake_Cs[lab]
+                axs[i].set_ylabel(classes[lab], fontsize = 25)
                 axs[i].set_xlim([llim, rlim])
-                _ = axs[i].hist(fake_Cs[0, :])
-                axs[i].set_title('Label {} from Label {}\'s net'.format(all_label[i], present_label[0]), fontsize = 20)
+                _ = axs[i].hist(fake_Cs[present_label[0]])
+                # axs[i].set_title('Label {} from Label {}\'s net'.format(lab, present_label[0]), fontsize = 20)
 
                 if i == len(all_label) - 1:
                     axs[i].set_xlabel(classes[present_label[0]], fontsize = 25)
@@ -490,18 +492,18 @@ class DPI:
 
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
-            llim = np.min(all_fake_Cs[0])
-            rlim = np.quantile(all_fake_Cs[0], 0.9)
-            for i in range(len(all_label)):
-                fake_Cs = all_fake_Cs[i]
-                for j in range(len(present_label)):
+            llim = np.min([np.min(list(vals.values())) for vals in all_fake_Cs.values()])
+            rlim = np.quantile(np.concatenate([np.concatenate(list(vals.values())) for vals in all_fake_Cs.values()]), 0.9)
+            for i, val_lab in enumerate(all_label):
+                fake_Cs = all_fake_Cs[val_lab]
+                for j, train_lab in enumerate(present_label):
                     axs[j, i].set_xlim([llim, rlim])
-                    _ = axs[j, i].hist(fake_Cs[j, :])
-                    axs[j, i].set_title('Label {} from Label {}\'s net'.format(all_label[i], present_label[j]))
+                    _ = axs[j, i].hist(fake_Cs[train_lab])
+                    # axs[j, i].set_title('Label {} from Label {}\'s net'.format(val_lab, train_lab))
                     if i == 0:
-                        axs[j, i].set_ylabel(classes[present_label[j]], fontsize = 25)
+                        axs[j, i].set_ylabel(classes[train_lab], fontsize = 25)
                     if j == len(present_label) - 1:
-                        axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
+                        axs[j, i].set_xlabel(classes[val_lab], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validating', fontsize = 25)
@@ -517,12 +519,21 @@ class DPI:
         plt.figure(figsize=(10, 6))
         
         # Plot with high contrast colors and different line styles without markers
-        plt.plot(GI_losses, label='GI Loss', color='black', linestyle='-')    # Black, solid line
-        plt.plot(MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
-        plt.plot(D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
-        # plt.plot(GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
-        plt.plot(Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
+        epochs = range(1, len(GI_losses) + 1)
+        plt.plot(epochs, GI_losses, label='GI Loss', color='black', linestyle='-')    # Black, solid line
+        plt.plot(epochs, MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
+        plt.plot(epochs, D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
+        # plt.plot(epochs, GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
+        plt.plot(epochs, Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
+        
+        # Combine all losses into one array
+        all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses, Power_losses])
+        # Calculate the 95th percentile
+        q99 = np.percentile(all_losses, 99)
+        min_loss = np.min(all_losses)
 
+        # Set y-axis limits
+        plt.ylim(min_loss - 0.01, q99)
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.title(f'Training Losses for Class {label}')
