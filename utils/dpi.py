@@ -54,20 +54,20 @@ class DPI:
         # Set timestamp and mode
         if timestamp is None:
             self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M")
-            self.inference_only = False  # Indicates we are in training mode
+            self.validation_only = False  # Indicates we are in training mode
         else:
             self.timestamp = timestamp
-            self.inference_only = True  # Indicates we are in inference mode
+            self.validation_only = True  # Indicates we are in validation mode
 
         # Initialize or load models based on the mode
         self.setup_models()
 
     def setup_models(self):
         """Setup models based on exitsting files or not."""
-        if self.inference_only:
+        if self.validation_only:
             print("Setting up models from existing files.")
             for label in self.present_label:
-                self.load_inference_model(label)  # Load "I" model for inference
+                self.load_inverse_model(label)  # Load "I" model for validation
         else:
             print("Setting up new models.")
             for label in self.present_label:
@@ -87,8 +87,8 @@ class DPI:
             'D': optim.Adam(netD.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
-    def load_inference_model(self, label):
-        """Load the pre-trained 'I' model for inference."""
+    def load_inverse_model(self, label):
+        """Load the pre-trained 'I' model for validation."""
         model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
@@ -102,7 +102,7 @@ class DPI:
 
     def train(self):
         """Train models for each present label."""
-        if self.inference_only:
+        if self.validation_only:
             print("Training is not allowed when a timestamp is provided. Exiting the train method.")
             return
 
@@ -137,7 +137,7 @@ class DPI:
             sample_sizes = self.compute_powers_and_sizes(T_train, label)
 
             # Freeze batch normalization layers before the second round of training
-            self.freeze_batch_norm_layers(netI)
+            # self.freeze_batch_norm_layers(netI)
 
             # Second round of training with new sample sizes
             self.train_label(
@@ -357,7 +357,7 @@ class DPI:
         all_fake_Ts = {}
 
         # Check if T_trains is empty and generate it if necessary
-        if self.inference_only:
+        if self.validation_only:
             for lab in self.present_label:
                 idxs = torch.where(torch.Tensor(self.train_gen.targets) == lab)[0]
                 train_data = torch.utils.data.Subset(self.train_gen, idxs)
@@ -528,12 +528,12 @@ class DPI:
         
         # Combine all losses into one array
         all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses, Power_losses])
-        # Calculate the 95th percentile
-        q99 = np.percentile(all_losses, 99)
+        # Calculate the 99th percentile
+        q995 = np.percentile(all_losses, 99.5)
         min_loss = np.min(all_losses)
 
         # Set y-axis limits
-        plt.ylim(min_loss - 0.01, q99)
+        plt.ylim(min_loss - 0.01, q995)
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
         plt.title(f'Training Losses for Class {label}')
