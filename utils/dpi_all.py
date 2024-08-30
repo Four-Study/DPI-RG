@@ -17,7 +17,7 @@ from .dataloader import get_dataset, get_data_loader
 
 
 class DPI:
-    def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs, lambda_mmd, lambda_gp, eta,
+    def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs, lambda_mmd, lambda_gp, eta, std,
                  present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
         
         self.lr_I = lr_I
@@ -31,6 +31,7 @@ class DPI:
         self.lambda_gp = lambda_gp
         # self.lambda_power = lambda_power
         self.eta = eta
+        self.std = std
         self.img_size = img_size
         self.nc = nc
         self.critic_iter = critic_iter
@@ -185,7 +186,7 @@ class DPI:
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
-                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
+                z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 # fake_x = netG(z)
                 netI.zero_grad()
@@ -194,7 +195,7 @@ class DPI:
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
-                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
+                z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 mmd = mmd_penalty(fake_z, z, kernel="RBF")
                 primal_cost = cost_GI + self.lambda_mmd * mmd
@@ -217,14 +218,14 @@ class DPI:
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
-                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
+                z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 netD.zero_grad()
                 cost_D = D_loss(netI, netG, netD, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
-                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
+                z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 gp_D = gradient_penalty_dual(x.data, z.data, netD, netG, netI)
                 dual_cost = cost_D + self.lambda_gp * gp_D
                 dual_cost.backward()
@@ -241,12 +242,17 @@ class DPI:
     def get_fake_zs(self, train_loader):
         netI = self.models['I']
         netI.eval()  # Set the model to evaluation mode
-        fake_zs = []
+        adjusted_fake_zs = []
         with torch.no_grad():
-            for x, _ in train_loader:
-                fake_z = netI(x.to(self.device))
-                fake_zs.append(fake_z)
-        return torch.cat(fake_zs)
+            for x, y in train_loader:
+                x = x.to(self.device)
+                fake_z = netI(x)
+                # Create one-hot encoded y
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                # Subtract the one-hot encoded y from fake_z
+                adjusted_fake_z = fake_z - y_one_hot
+                adjusted_fake_zs.append(adjusted_fake_z)
+        return torch.cat(adjusted_fake_zs)
 
     def compute_powers_and_sizes(self, T_train):
         powers = {}
@@ -314,7 +320,7 @@ class DPI:
         em_len = len(T_train)
         # Use the single preloaded "I" model
         netI = self.models['I']
-        netI.eval()
+        netI.train()
 
         for lab in self.all_label:
             if torch.is_tensor(self.test_gen.targets):
@@ -322,7 +328,7 @@ class DPI:
             else:
                 idxs = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
             test_data = torch.utils.data.Subset(self.test_gen, idxs)
-            test_loader = DataLoader(test_data, batch_size=self.batch_size, shuffle=False)
+            test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
             # Initialize p_vals and fake_Ts for the current iteration
             fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
@@ -336,15 +342,14 @@ class DPI:
                 for label in self.present_label:
                     # Create one-hot encoded y for the current label
                     y_one_hot = torch.nn.functional.one_hot(torch.tensor([label] * len(y)), num_classes=len(self.present_label)).float().to(self.device)
-                    
                     # Subtract the one-hot encoded y from fake_z
                     adjusted_fake_z = fake_z - y_one_hot
                     
                     T_batch = torch.sqrt(torch.sum(adjusted_fake_z ** 2, 1) + 1)
                     for j in range(len(fake_z)):
                         p = torch.sum(T_train > T_batch[j]) / em_len
-                        fake_Ts[label][i * self.batch_size + j] = T_batch[j].item()
-                        p_vals[label][i * self.batch_size + j] = p.item()
+                        fake_Ts[label][i * 1 + j] = T_batch[j].item()
+                        p_vals[label][i * 1 + j] = p.item()
 
             all_p_vals[lab] = {k: v.numpy() for k, v in p_vals.items()}
             all_fake_Ts[lab] = {k: v.numpy() for k, v in fake_Ts.items()}
@@ -439,7 +444,7 @@ class DPI:
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
             llim = np.min([np.min(list(vals.values())) for vals in all_fake_Cs.values()])
-            rlim = np.quantile(np.concatenate([np.concatenate(list(vals.values())) for vals in all_fake_Cs.values()]), 0.9)
+            rlim = np.quantile(np.concatenate([np.concatenate(list(vals.values())) for vals in all_fake_Cs.values()]), 0.95)
             for i, val_lab in enumerate(all_label):
                 fake_Cs = all_fake_Cs[val_lab]
                 for j, train_lab in enumerate(present_label):

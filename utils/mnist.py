@@ -43,7 +43,7 @@ class I_MNIST(nn.Module):
         self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
         
         # Modify the first convolutional layer to accept 1 channel input
-        self.resnet.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        self.resnet.conv1 = nn.Conv2d(1, self.resnet.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
         
         # Modify the final fully connected layer to output nz features
         num_ftrs = self.resnet.fc.in_features
@@ -116,140 +116,6 @@ class I_MNIST3(nn.Module):
         x = x.view(-1, 1, 28, 28)
         return self.model(x)
 
-
-# class I_MNIST3(nn.Module):
-
-#     def __init__(self, nz):
-#         super(I_MNIST3, self).__init__()
-
-#         # calculate same padding:
-#         # (w - k + 2*p)/s + 1 = o
-#         # => p = (s(o-1) - w + k)/2
-#         layers = [
-#             # block 1
-#             nn.Conv2d(in_channels=1,
-#                       out_channels=64,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       # (1(32-1)- 32 + 3)/2 = 1
-#                       padding=3),
-#             nn.BatchNorm2d(64),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=64,
-#                       out_channels=64,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(64),
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=(2, 2),
-#                          stride=(2, 2)),
-#             # block 2
-#             nn.Conv2d(in_channels=64,
-#                       out_channels=128,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(128),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=128,
-#                       out_channels=128,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(128),
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=(2, 2),
-#                          stride=(2, 2)),
-#             # block 3
-#             nn.Conv2d(in_channels=128,
-#                       out_channels=256,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(256),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=256,
-#                       out_channels=256,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(256),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=256,
-#                       out_channels=256,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(256),
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=(2, 2),
-#                          stride=(2, 2)),
-#             # block 4
-#             nn.Conv2d(in_channels=256,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=512,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=512,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=(2, 2),
-#                          stride=(2, 2)),
-#             # block 5
-#             nn.Conv2d(in_channels=512,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=512,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.Conv2d(in_channels=512,
-#                       out_channels=512,
-#                       kernel_size=(3, 3),
-#                       stride=(1, 1),
-#                       padding=1),
-#             nn.BatchNorm2d(512),
-#             nn.ReLU(),
-#             nn.MaxPool2d(kernel_size=(2, 2),
-#                          stride=(2, 2)),
-#             # classifier
-#             nn.Flatten(),
-#             nn.Linear(512, 4096),
-#             nn.ReLU(True),
-#             nn.Dropout(p=0.65),
-#             nn.Linear(4096, 4096),
-#             nn.ReLU(True),
-#             nn.Dropout(p=0.65),
-#             nn.Linear(4096, nz),
-#         ]
-#         self.main = nn.Sequential(*layers)
-
-#     def forward(self, x):
-#         # Reshape the input
-#         x = x.view(-1, 1, 28, 28)
-#         logits = self.main(x)
-#         return logits
 
     
 class G_MNIST(nn.Module):

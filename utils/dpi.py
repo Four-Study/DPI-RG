@@ -302,7 +302,7 @@ class DPI:
 
     def get_fake_zs(self, label, train_loader):
         netI = self.models[label]['I']
-        netI.eval()  # Set the model to evaluation mode
+        # netI.eval()  # Set the model to evaluation mode
         fake_zs = []
         with torch.no_grad():
             for x, _ in train_loader:
@@ -383,7 +383,7 @@ class DPI:
             else:
                 idxs = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
             test_data = torch.utils.data.Subset(self.test_gen, idxs)
-            test_loader = DataLoader(test_data, batch_size=self.batch_size, shuffle=False)
+            test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
             # Initialize p_vals and fake_Ts for the current iteration
             fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
@@ -395,6 +395,7 @@ class DPI:
                 
                 # Use the preloaded "I" model from self.models
                 netI = self.models[label]['I']
+                netI.train()
 
                 for i, batch in enumerate(test_loader):
                     images, y = batch
@@ -404,8 +405,8 @@ class DPI:
                     for j in range(len(fake_z)):
                         p1 = torch.sum(T_train > T_batch[j]) / em_len
                         p = p1
-                        fake_Ts[label][i * self.batch_size + j] = T_batch[j].item()
-                        p_vals[label][i * self.batch_size + j] = p.item()
+                        fake_Ts[label][i * 1 + j] = T_batch[j].item()
+                        p_vals[label][i * 1 + j] = p.item()
 
             all_p_vals[lab] = {k: v.numpy() for k, v in p_vals.items()}
             all_fake_Ts[lab] = {k: v.numpy() for k, v in fake_Ts.items()}
@@ -483,7 +484,7 @@ class DPI:
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
             llim = np.min([np.min(vals[present_label[0]]) for vals in all_fake_Cs.values()])
-            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.9)
+            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.95)
             for i, lab in enumerate(all_label):
                 fake_Cs = all_fake_Cs[lab]
                 axs[i].set_ylabel(classes[lab], fontsize = 25)
