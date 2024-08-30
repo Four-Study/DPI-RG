@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
-
-# torch.manual_seed(1)
     
 # class I_MNIST(nn.Module):
 
@@ -38,19 +36,40 @@ from torchvision import models
 #             output = self.main(input)
 #         return output
 
-class I_MNIST(models.ResNet):
+class I_MNIST(nn.Module):
     def __init__(self, nz=5):
-        # Initialize with the basic block and layer configuration of ResNet-18
-        super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=nz)
-        self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        # Replace the maxpool layer
-        self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+        super(I_MNIST, self).__init__()
+        # Load pre-trained ResNet18
+        self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        
+        # Modify the first convolutional layer to accept 1 channel input
+        self.resnet.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+        
+        # Modify the final fully connected layer to output nz features
+        num_ftrs = self.resnet.fc.in_features
+        self.resnet.fc = nn.Linear(num_ftrs, nz)
+        
+        # Remove the initial maxpool layer as FashionMNIST images are smaller
+        self.resnet.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         # Reshape the input
         x = x.view(-1, 1, 28, 28)
-        # Call the original forward method
-        return super(I_MNIST, self).forward(x)
+        return self.resnet(x)
+
+# class I_MNIST(models.ResNet):
+#     def __init__(self, nz=5):
+#         # Initialize with the basic block and layer configuration of ResNet-18
+#         super(I_MNIST, self).__init__(block=models.resnet.BasicBlock, layers=[2, 2, 2, 2], num_classes=nz)
+#         self.conv1 = nn.Conv2d(1, self.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+#         # Replace the maxpool layer
+#         self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1, padding=0)
+
+#     def forward(self, x):
+#         # Reshape the input
+#         x = x.view(-1, 1, 28, 28)
+#         # Call the original forward method
+#         return super(I_MNIST, self).forward(x)
 
 class I_MNIST2(models.ResNet):
     def __init__(self, nz=5):
