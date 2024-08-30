@@ -1,5 +1,3 @@
-# import matplotlib
-# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -11,7 +9,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-gpu = 0
+# Helper function to get the device
+def get_device(tensor):
+    return tensor.device
+
 # loss function for D update:
 def D_loss(netI, netG, netD, z, fake_z):
     post_z = netI(netG(z))
@@ -56,14 +57,15 @@ def dual(netI, netG, netD, z, fake_z):
 # Gradient Penalty
 # gradient penalty function
 def _gradient_penalty(x, y, f):
+    device = get_device(x)
     # interpolation
     shape = [x.size(0)] + [1] * (x.dim() - 1)
-    alpha = torch.rand(shape).cuda(gpu)
+    alpha = torch.rand(shape).to(device)
     z = x + alpha * (y - x)
     # gradient penalty
-    z = Variable(z, requires_grad=True).cuda(gpu)
+    z = Variable(z, requires_grad=True).to(device)
     o = f(z)
-    g = grad(o, z, grad_outputs=(torch.ones(o.size())).cuda(gpu), create_graph=True)[0].view(z.size(0), -1)
+    g = grad(o, z, grad_outputs=(torch.ones(o.size())).to(device), create_graph=True)[0].view(z.size(0), -1)
     # g = grad(o, z, grad_outputs=(torch.ones(o.size())), create_graph=True)[0].view(z.size(0), -1)
     gp = ((g.norm(p=2, dim=1) - 1)**2).mean()
     return gp
@@ -95,6 +97,7 @@ def z_Qx(x, z, netD, netG, netI):
 # *** MMD penalty ***
 # MMD loss between z and I(x)
 def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
+    device = get_device(z)
     n = z.shape[0]
     zdim = z.shape[1]
     half_size = int((n * n - n)/2)
@@ -116,7 +119,7 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
         #
         res1 = torch.exp(-dists_zh/2./sigma2_k)
         res1 = res1 + torch.exp(-dists_z/2./sigma2_k)
-        res1 = torch.mul(res1, 1. - torch.eye(n).cuda(gpu))
+        res1 = torch.mul(res1, 1. - torch.eye(n).to(device))
         res1 = res1.sum() / (n*n-n)
         res2 = torch.exp(-dists/2./sigma2_k)
         res2 = res2.sum()*2./(n*n)
@@ -129,7 +132,7 @@ def mmd_penalty(z_hat, z, kernel="RBF", sigma2_p=1):
         for scale in [.1, .2, .5, 1., 2., 5., 10.]:
             C = Cbase * scale
             res1 = C / (C + dists_z) + C / (C + dists_zh)
-            res1 = torch.mul(res1, 1. - torch.eye(n).cuda(gpu))
+            res1 = torch.mul(res1, 1. - torch.eye(n).to(device))
             res1 = res1.sum() / (n*n-n)
             res2 = C / (C + dists)
             res2 = res2.sum()*2./(n*n)
