@@ -10,7 +10,5 @@ _utils/*
 *.pdf
 *.log
 *.ipynb
-models/__init__.py
-models/cifar10.py
-models/mnist.py
+models/*
 utils/tools.py

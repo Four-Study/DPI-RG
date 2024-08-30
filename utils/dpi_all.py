@@ -2,15 +2,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-# import urllib
-# import gzip
-# import pickle
 import time
 from datetime import datetime
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from .losses import *
@@ -19,26 +17,25 @@ from .dataloader import get_dataset, get_data_loader
 
 
 class DPI:
-    def __init__(self, dataset_name, z_dim, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs1, epochs2, lambda_mmd, lambda_gp, lambda_power, eta,
-                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, critic_iter_p=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
+    def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs, lambda_mmd, lambda_gp, eta,
+                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
         
-        self.z_dim = z_dim
         self.lr_I = lr_I
         self.lr_G = lr_G
         self.lr_D = lr_D
         self.weight_decay = weight_decay
         self.batch_size = batch_size
-        self.epochs1 = epochs1
-        self.epochs2 = epochs2
+        self.epochs = epochs
+        # self.epochs2 = epochs2
         self.lambda_mmd = lambda_mmd
         self.lambda_gp = lambda_gp
-        self.lambda_power = lambda_power
+        # self.lambda_power = lambda_power
         self.eta = eta
         self.img_size = img_size
         self.nc = nc
         self.critic_iter = critic_iter
         self.critic_iter_d = critic_iter_d
-        self.critic_iter_p = critic_iter_p
+        # self.critic_iter_p = critic_iter_p
         self.decay_epochs = decay_epochs
         self.gamma = gamma
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -48,9 +45,10 @@ class DPI:
         self.train_gen = get_dataset(dataset_name, train=True)
         self.test_gen = get_dataset(dataset_name, train=False)
         self.present_label = present_label
+        self.z_dim = len(present_label)
         self.missing_label = missing_label
         self.all_label = self.present_label + self.missing_label
-        self.T_trains = {}  
+        self.T_train = None  
 
         # Set timestamp and mode
         if timestamp is None:
@@ -64,123 +62,94 @@ class DPI:
         self.setup_models()
 
     def setup_models(self):
-        """Setup models based on exitsting files or not."""
+        """Setup a single set of models for all classes."""
         if self.validation_only:
-            print("Setting up models from existing files.")
-            for label in self.present_label:
-                self.load_inverse_model(label)  # Load "I" model for validation
+            print("Setting up model from existing file.")
+            self.load_inverse_model()  # Load single "I" model for validation
         else:
             print("Setting up new models.")
-            for label in self.present_label:
-                self.initialize_model(label)  # Initialize "I", "G", "D" for training
+            self.initialize_model()  # Initialize single set of "I", "G", "D" for training
 
-    def initialize_model(self, label):
-        """Initialize 'I', 'G', 'D' models for a given label for training."""
+    def initialize_model(self):
+        """Initialize a single set of 'I', 'G', 'D' models for training."""
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netG = G_MNIST(nz=self.z_dim).to(self.device)
         netD = D_MNIST(nz=self.z_dim).to(self.device)
         netI, netG, netD = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netD)
 
-        self.models[label] = {'I': netI, 'G': netG, 'D': netD}
-        self.optimizers[label] = {
+        self.models = {'I': netI, 'G': netG, 'D': netD}
+        self.optimizers = {
             'I': optim.Adam(netI.parameters(), lr=self.lr_I, betas=(0.5, 0.999)),
             'G': optim.Adam(netG.parameters(), lr=self.lr_G, betas=(0.5, 0.999)),
             'D': optim.Adam(netD.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
-    def load_inverse_model(self, label):
+    def load_inverse_model(self):
         """Load the pre-trained 'I' model for validation."""
-        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
+        model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
             netI.load_state_dict(torch.load(model_save_file))
-            self.models[label] = {'I': netI}
-            print(f"Successfully loaded model for label {label} from {model_save_file}.")
+            self.models = {'I': netI}
+            print(f"Successfully loaded model from {model_save_file}.")
         except Exception as e:
-            raise FileNotFoundError(f"Failed to load model for label {label} at {model_save_file}. Error: {e}")
-
+            raise FileNotFoundError(f"Failed to load model at {model_save_file}. Error: {e}")
 
     def train(self):
-        """Train models for each present label."""
+        """Train a single set of models for all present labels."""
         if self.validation_only:
             print("Training is not allowed when a timestamp is provided. Exiting the train method.")
             return
-        
-        print(f"{'-'*100}\nStart training\n{'-'*100}")    
+
+        print(f"{'-'*100}\nStart training\n{'-'*100}")
         start_time = time.time()
+
+        train_loader = get_data_loader(self.train_gen, self.present_label, self.batch_size)
+
+        # Retrieve models and optimizers
+        netI, netG, netD = self.models['I'], self.models['G'], self.models['D']
+        optim_I, optim_G, optim_D = self.optimizers['I'], self.optimizers['G'], self.optimizers['D']
         
-        for label in self.present_label:
-            print(f"{'-'*100}\nStart to train label: {label}\n{'-'*100}")
+        # Initialize lists to store losses
+        GI_losses, MMD_losses, D_losses, GP_losses = [], [], [], []
 
-            train_loader = train_loader = get_data_loader(self.train_gen, [label], self.batch_size)
+        self.train_epoch(
+            netI, netG, netD, optim_I, optim_G, optim_D,
+            train_loader, 
+            sample_sizes=None, 
+            GI_losses=GI_losses, MMD_losses=MMD_losses,
+            D_losses=D_losses, GP_losses=GP_losses
+        )
 
-            # Retrieve models and optimizers for the current label
-            netI, netG, netD = self.models[label]['I'], self.models[label]['G'], self.models[label]['D']
-            optim_I, optim_G, optim_D = self.optimizers[label]['I'], self.optimizers[label]['G'], self.optimizers[label]['D']
-            
-            # Initialize lists to store losses
-            GI_losses, MMD_losses, D_losses, GP_losses, Power_losses = [], [], [], [], []
+        # Save the trained model
+        self.save_model()
 
-            # First round of training
-            self.train_label(
-                label, netI, netG, netD, optim_I, optim_G, optim_D,
-                train_loader, 0, self.epochs1,
-                sample_sizes=None, 
-                GI_losses=GI_losses, MMD_losses=MMD_losses,
-                D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
-            )
+        # Get fake_zs for further training or analysis
+        fake_zs = self.get_fake_zs(train_loader)
 
-            # Get fake_zs for further training or analysis
-            fake_zs = self.get_fake_zs(label, train_loader)
+        # Calculate empirical distribution T_train
+        T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+        self.T_train = T_train
 
-            # Calculate empirical distribution T_train
-            T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+        # Save the loss plots to the graphs folder
+        self.save_loss_plots(GI_losses, MMD_losses, D_losses, GP_losses)
 
-            # Compute powers and new sample sizes
-            sample_sizes = self.compute_powers_and_sizes(T_train, label)
-
-            # Freeze batch normalization layers before the second round of training
-            # self.freeze_batch_norm_layers(netI)
-
-            # Second round of training with new sample sizes
-            self.train_label(
-                label, netI, netG, netD, optim_I, optim_G, optim_D,
-                train_loader, self.epochs1, self.epochs2,
-                sample_sizes=sample_sizes, 
-                GI_losses=GI_losses, MMD_losses=MMD_losses,
-                D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
-            )
-
-            # Save the trained model
-            self.save_model(label)
-
-            # Get fake_zs for further training or analysis
-            fake_zs = self.get_fake_zs(label, train_loader)
-
-            # Calculate empirical distribution T_train
-            T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-            self.T_trains[label] = T_train
-
-            # Save the loss plots to the graphs folder
-            self.save_loss_plots(label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses)
-        
         end_time = time.time()
         training_time = end_time - start_time
         hours, remainder = divmod(training_time, 3600)
         minutes, seconds = divmod(remainder, 60)
+        
         print(f"{'-'*100}")
         print(f"Finish training")
         print(f"Total training time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
         print(f"{'-'*100}")
 
-    def train_label(self, label, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
+    def train_epoch(self, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, 
             sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
-                D_losses=[], GP_losses=[], Power_losses=[]):
+                D_losses=[], GP_losses=[]):
 
-        imbalanced = True
         if sampled_idxs is None:
-            imbalanced = False
             sampled_idxs = {}
             for cur_lab in self.present_label:
                 if torch.is_tensor(self.train_gen.targets):
@@ -190,7 +159,7 @@ class DPI:
                 sampled_idxs[cur_lab] = temp
                 
         if sample_sizes is None:
-            sample_sizes = {cur_lab: int(len(train_loader.dataset.indices) / len(self.present_label)) for cur_lab in self.present_label if cur_lab != label}
+            sample_sizes = {cur_lab: int(len(train_loader.dataset.indices) / len(self.present_label)) for cur_lab in self.present_label}
             
         # Learning rate schedulers
         if isinstance(self.decay_epochs, int):
@@ -199,8 +168,8 @@ class DPI:
             scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=self.gamma)
 
         # Training for this label started
-        for epoch in range(start_epoch + 1, end_epoch + 1):
-            if (epoch - 1) % max(self.epochs2 // 4, 1) == 0 or epoch == self.epochs2:
+        for epoch in range(1, self.epochs):
+            if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
                 print(f'Epoch = {epoch}')
             data = iter(train_loader)
             
@@ -213,17 +182,19 @@ class DPI:
                 p.requires_grad = True
                 
             for _ in range(self.critic_iter):
-                images, _ = self.next_batch(data, train_loader)
+                images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                z = torch.randn(len(images), self.z_dim).to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
                 fake_z = netI(x)
                 # fake_x = netG(z)
                 netI.zero_grad()
                 netG.zero_grad()
                 cost_GI = GI_loss(netI, netG, netD, z, fake_z)
-                images, _ = self.next_batch(data, train_loader)
+                images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                z = torch.randn(len(images), self.z_dim).to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
                 fake_z = netI(x)
                 mmd = mmd_penalty(fake_z, z, kernel="RBF")
                 primal_cost = cost_GI + self.lambda_mmd * mmd
@@ -243,15 +214,17 @@ class DPI:
                 p.requires_grad = False
                 
             for _ in range(self.critic_iter_d):
-                images, _ = self.next_batch(data, train_loader)
+                images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                z = torch.randn(len(images), self.z_dim).to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
                 fake_z = netI(x)
                 netD.zero_grad()
                 cost_D = D_loss(netI, netG, netD, z, fake_z)
-                images, _ = self.next_batch(data, train_loader)
+                images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                z = torch.randn(len(images), self.z_dim).to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                z = torch.randn(len(images), self.z_dim, device=self.device) + y_one_hot
                 gp_D = gradient_penalty_dual(x.data, z.data, netD, netG, netI)
                 dual_cost = cost_D + self.lambda_gp * gp_D
                 dual_cost.backward()
@@ -259,49 +232,14 @@ class DPI:
                 
             D_losses.append(cost_D.cpu().item())
             GP_losses.append(self.lambda_gp * gp_D.cpu().item())
-
-            # Train in alternative hypothesis
-            idxs2 = torch.Tensor([])
-            for cur_lab in self.present_label:
-                if cur_lab != label:
-                    temp = sampled_idxs[cur_lab]
-                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
-            idxs2 = idxs2.int()
-            train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
-            train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
-            data2 = iter(train_loader2)
-            
-            # 3. Update I network
-            for p in netD.parameters():
-                p.requires_grad = False
-            for p in netI.parameters():
-                p.requires_grad = True
-            for p in netG.parameters():
-                p.requires_grad = False
-                
-            for _ in range(self.critic_iter_p):
-                images, _ = self.next_batch(data2, train_loader2)
-                x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                bs = len(x)
-                
-                z = torch.ones(bs, self.z_dim, 1, 1, device=self.device) * self.eta
-                x = x.to(self.device)
-                fake_z = netI(x)
-
-                netI.zero_grad()
-                loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
-                loss_power.backward()
-                optim_I.step()
-
-            Power_losses.append(loss_power.cpu().item())
             
             if isinstance(self.decay_epochs, int):
                 scheduler_I.step()
                 scheduler_G.step()
                 scheduler_D.step()
 
-    def get_fake_zs(self, label, train_loader):
-        netI = self.models[label]['I']
+    def get_fake_zs(self, train_loader):
+        netI = self.models['I']
         netI.eval()  # Set the model to evaluation mode
         fake_zs = []
         with torch.no_grad():
@@ -310,33 +248,30 @@ class DPI:
                 fake_zs.append(fake_z)
         return torch.cat(fake_zs)
 
-    def compute_powers_and_sizes(self, T_train, label):
+    def compute_powers_and_sizes(self, T_train):
         powers = {}
         for cur_lab in self.present_label:
-            if cur_lab != label:
-                idxs = torch.where(self.train_gen.targets == cur_lab)[0]
-                train_data = torch.utils.data.Subset(self.train_gen, idxs)
-                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+            idxs = torch.where(self.train_gen.targets == cur_lab)[0]
+            train_data = torch.utils.data.Subset(self.train_gen, idxs)
+            train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
 
-                netI = self.models[label]['I']
-                netI.eval()  # Set the model to evaluation mode
-                p_vals = torch.zeros(len(idxs))
-                with torch.no_grad():
-                    for i, (x, _) in enumerate(train_loader):
-                        fake_z = netI(x.to(self.device))
-                        T_batch = torch.sqrt(torch.sum(fake_z ** 2, dim=1) + 1)
-                        for j in range(len(fake_z)):
-                            p = torch.sum(T_train > T_batch[j]) / len(T_train)
-                            p_vals[i * self.batch_size + j] = p.item()
-                powers[cur_lab] = np.sum(np.array(p_vals) <= 0.05) / len(idxs)
+            netI = self.models['I']
+            netI.eval()  # Set the model to evaluation mode
+            p_vals = torch.zeros(len(idxs))
+            with torch.no_grad():
+                for i, (x, _) in enumerate(train_loader):
+                    fake_z = netI(x.to(self.device))
+                    T_batch = torch.sqrt(torch.sum(fake_z ** 2, dim=1) + 1)
+                    for j in range(len(fake_z)):
+                        p = torch.sum(T_train > T_batch[j]) / len(T_train)
+                        p_vals[i * self.batch_size + j] = p.item()
+            powers[cur_lab] = np.sum(np.array(p_vals.numpy()) <= 0.05) / len(idxs)
 
         sample_sizes = {lab: max(powers.values()) - pow + 0.05 for lab, pow in powers.items()}
         total = sum(sample_sizes.values())
         sample_sizes = {lab: int((size / total) * len(idxs)) for lab, size in sample_sizes.items()}
 
         return sample_sizes
-
-
 
     @staticmethod
     def next_batch(data_iter, train_loader):
@@ -354,28 +289,30 @@ class DPI:
                 for param in module.parameters():
                     param.requires_grad = False  # Disable gradient updates for batch norm parameters
 
-
-    def save_model(self, label):
-        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
-        torch.save(self.models[label]['I'].state_dict(), model_save_file)
+    def save_model(self):
+        model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
+        torch.save(self.models['I'].state_dict(), model_save_file)
 
     def validate(self):
         all_p_vals = {}
         all_fake_Ts = {}
 
-        # Check if T_trains is empty and generate it if necessary
+        # Check if T_train is empty and generate it if necessary
         if self.validation_only:
-            for lab in self.present_label:
-                idxs = torch.where(torch.Tensor(self.train_gen.targets) == lab)[0]
-                train_data = torch.utils.data.Subset(self.train_gen, idxs)
-                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
-                
-                # Get fake_zs for further training or analysis
-                fake_zs = self.get_fake_zs(lab, train_loader)
-                
-                # Calculate empirical distribution T_train
-                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-                self.T_trains[lab] = T_train
+            idxs = torch.where(torch.isin(torch.Tensor(self.train_gen.targets), torch.tensor(self.present_label)))[0]
+            train_data = torch.utils.data.Subset(self.train_gen, idxs)
+            train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+            
+            # Get fake_zs for further training or analysis
+            fake_zs = self.get_fake_zs(train_loader)
+            
+            # Calculate empirical distribution T_train
+            T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+            self.T_train = T_train
+
+        # Use the single preloaded "I" model
+        netI = self.models['I']
+        netI.eval()
 
         for lab in self.all_label:
             if torch.is_tensor(self.test_gen.targets):
@@ -389,21 +326,24 @@ class DPI:
             fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
             p_vals = {label: torch.zeros(len(idxs)) for label in self.present_label}
 
-            for label in self.present_label:
-                T_train = self.T_trains[label]
-                em_len = len(T_train)
-                
-                # Use the preloaded "I" model from self.models
-                netI = self.models[label]['I']
+            T_train = self.T_train
+            em_len = len(T_train)
 
-                for i, batch in enumerate(test_loader):
-                    images, y = batch
-                    x = images.view(-1, self.nc, self.img_size * self.img_size).to(self.device)
+            for i, (images, y) in enumerate(test_loader):
+                x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
+                with torch.no_grad():
                     fake_z = netI(x)
-                    T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
+
+                for label in self.present_label:
+                    # Create one-hot encoded y for the current label
+                    y_one_hot = torch.nn.functional.one_hot(torch.tensor([label] * len(y)), num_classes=len(self.present_label)).float().to(self.device)
+                    
+                    # Subtract the one-hot encoded y from fake_z
+                    adjusted_fake_z = fake_z - y_one_hot
+                    
+                    T_batch = torch.sqrt(torch.sum(adjusted_fake_z ** 2, 1) + 1)
                     for j in range(len(fake_z)):
-                        p1 = torch.sum(T_train > T_batch[j]) / em_len
-                        p = p1
+                        p = torch.sum(T_train > T_batch[j]) / em_len
                         fake_Ts[label][i * self.batch_size + j] = T_batch[j].item()
                         p_vals[label][i * self.batch_size + j] = p.item()
 
@@ -518,7 +458,7 @@ class DPI:
         fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)
 
-    def save_loss_plots(self, label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses):
+    def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
         """Save the losses for the training process to the graphs folder."""
         # Ensure the graphs directory exists
         os.makedirs('graphs', exist_ok=True)
@@ -531,21 +471,21 @@ class DPI:
         plt.plot(epochs, MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
         plt.plot(epochs, D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
         # plt.plot(epochs, GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
-        plt.plot(epochs, Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
+        # plt.plot(epochs, Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
         
         # Combine all losses into one array
-        all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses, Power_losses])
+        all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses])
         # Calculate the 99th percentile
-        uq = np.percentile(all_losses, 99.5)
+        uq = np.percentile(all_losses, 99)
         min_loss = np.min(all_losses)
 
         # Set y-axis limits
         plt.ylim(min_loss - 0.01, uq)
         plt.xlabel('Epochs')
         plt.ylabel('Loss')
-        plt.title(f'Training Losses for Class {label}')
+        plt.title(f'Training Losses')
         plt.legend()
         
         # Save the plot instead of showing it
-        plt.savefig(f'graphs/{self.timestamp}_losses_class{label}.png')
+        plt.savefig(f'graphs/{self.timestamp}_losses.png')
         plt.close()

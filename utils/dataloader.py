@@ -1,41 +1,47 @@
-import os
-import numpy as np
-from PIL import Image
-from torch.utils.data import Dataset
+import torch
+from torch.utils.data import DataLoader, Subset
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
 
-# MNIST dataloader
-# class MNISTBatcher(Dataset):
-#     def __init__(self, data_path='./datasets/MNIST/mnist.pkl.gz', train=True):
-#         self.data_path = data_path
-#         self.train = train
-#         with gzip.open(self.data_path, 'rb') as f:
-#             train_data, dev_data, test_data = pickle.load(f, encoding='latin1')
-#         if self.train:
-#             self.data = train_data
-#         else:
-#             self.data = test_data
+def get_dataset(dataset_name, root="./datasets", train=True, transform=None, download=True):
+    """
+    Get a dataset from torchvision.datasets.
+    
+    Args:
+    dataset_name (str): Name of the dataset (e.g., 'FashionMNIST', 'CIFAR10', etc.)
+    root (str): Root directory of dataset where data will be stored
+    train (bool): If True, creates dataset from training set, otherwise creates from test set
+    transform (callable, optional): A function/transform that takes in an PIL image and returns a transformed version
+    download (bool): If true, downloads the dataset from the internet and puts it in root directory
+    
+    Returns:
+    dataset: A torchvision dataset
+    """
+    if transform is None:
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+    
+    dataset_class = getattr(datasets, dataset_name)
+    dataset = dataset_class(root=root, train=train, transform=transform, download=download)
+    
+    return dataset
 
-#     def __len__(self):
-#         return len(self.data[1])
-
-#     def __getitem__():
-#         images, targets = self.data
-#         return {"images": images, "targets": targets}
-
-# CelebA dataloader
-# class CelebABatcher(Dataset):
-#     def __init__(self, data_path, resolution=64, transform=None):
-#         self.data_path = data_path
-#         self.resolution = resolution
-#         self.image_files = [entry for entry in os.listdir(self.data_path+str(self.resolution))]
-#         self.transform = transform
-
-#     def __len__(self):
-#         return len(self.image_files)
-
-#     def __getitem__(self, idx):
-#         image = np.array(Image.open(self.data_path+str(self.resolution)+"/"+self.image_files[idx]))
-#         # image = image.reshape((-1, )+image.shape)
-#         if self.transform:
-#             image = self.transform(image)
-#         return image
+def get_data_loader(dataset, labels, batch_size, shuffle=True):
+    """
+    Get a DataLoader for the specified labels from the dataset.
+    
+    Args:
+    dataset: A torchvision dataset
+    labels (list): List of labels to include in the DataLoader
+    batch_size (int): How many samples per batch to load
+    shuffle (bool): If True, shuffle the data
+    
+    Returns:
+    DataLoader: A DataLoader containing only the specified labels
+    """
+    if torch.is_tensor(dataset.targets):
+        idxs = torch.where(torch.isin(dataset.targets, torch.tensor(labels)))[0]
+    else:
+        idxs = torch.where(torch.isin(torch.tensor(dataset.targets), torch.tensor(labels)))[0]
+    
+    subset = Subset(dataset, idxs)
+    return DataLoader(subset, batch_size=batch_size, shuffle=shuffle)
