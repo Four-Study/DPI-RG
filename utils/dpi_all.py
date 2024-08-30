@@ -309,7 +309,9 @@ class DPI:
             # Calculate empirical distribution T_train
             T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
             self.T_train = T_train
-
+        else:
+            T_train = self.T_train
+        em_len = len(T_train)
         # Use the single preloaded "I" model
         netI = self.models['I']
         netI.eval()
@@ -325,9 +327,6 @@ class DPI:
             # Initialize p_vals and fake_Ts for the current iteration
             fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
             p_vals = {label: torch.zeros(len(idxs)) for label in self.present_label}
-
-            T_train = self.T_train
-            em_len = len(T_train)
 
             for i, (images, y) in enumerate(test_loader):
                 x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
@@ -405,7 +404,7 @@ class DPI:
                         axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validating', fontsize = 25)
+        fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
         fig.savefig(f'graphs/{self.timestamp}_size_power.png', dpi=150)
         plt.close(fig)
@@ -453,7 +452,7 @@ class DPI:
                         axs[j, i].set_xlabel(classes[val_lab], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validating', fontsize = 25)
+        fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
         fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)

@@ -465,7 +465,7 @@ class DPI:
                         axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validating', fontsize = 25)
+        fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
         fig.savefig(f'graphs/{self.timestamp}_size_power.png', dpi=150)
         plt.close(fig)
@@ -513,7 +513,7 @@ class DPI:
                         axs[j, i].set_xlabel(classes[val_lab], fontsize = 25)
         
         fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validating', fontsize = 25)
+        fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
         fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)
