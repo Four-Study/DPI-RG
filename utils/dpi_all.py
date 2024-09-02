@@ -1,66 +1,23 @@
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 import time
-from datetime import datetime
-
-import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
+from .base_dpi import BaseDPI
 from .losses import *
 from .mnist import I_MNIST, G_MNIST, D_MNIST
-from .dataloader import get_dataset, get_data_loader
+from .dataloader import get_data_loader
 
 
-class DPI:
-    def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, epochs, lambda_mmd, lambda_gp, eta, std,
-                 present_label, missing_label = [], img_size=28, nc=1, critic_iter=10, critic_iter_d=10, decay_epochs=None, gamma=0.2, device=None, timestamp=None):
-        
-        self.lr_I = lr_I
-        self.lr_G = lr_G
-        self.lr_D = lr_D
-        self.weight_decay = weight_decay
-        self.batch_size = batch_size
+
+
+class DPI_ALL(BaseDPI):
+    def __init__(self, *args, epochs, **kwargs):
         self.epochs = epochs
-        # self.epochs2 = epochs2
-        self.lambda_mmd = lambda_mmd
-        self.lambda_gp = lambda_gp
-        # self.lambda_power = lambda_power
-        self.eta = eta
-        self.std = std
-        self.img_size = img_size
-        self.nc = nc
-        self.critic_iter = critic_iter
-        self.critic_iter_d = critic_iter_d
-        # self.critic_iter_p = critic_iter_p
-        self.decay_epochs = decay_epochs
-        self.gamma = gamma
-        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.models = {}
-        self.optimizers = {}
-        self.dataset_name = dataset_name
-        self.train_gen = get_dataset(dataset_name, train=True)
-        self.test_gen = get_dataset(dataset_name, train=False)
-        self.present_label = present_label
-        self.z_dim = len(present_label)
-        self.missing_label = missing_label
-        self.all_label = self.present_label + self.missing_label
         self.T_train = None  
+        super().__init__(*args, **kwargs)
 
-        # Set timestamp and mode
-        if timestamp is None:
-            self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M")
-            self.validation_only = False  # Indicates we are in training mode
-        else:
-            self.timestamp = timestamp
-            self.validation_only = True  # Indicates we are in validation mode
-
-        # Initialize or load models based on the mode
-        self.setup_models()
 
     def setup_models(self):
         """Setup a single set of models for all classes."""
@@ -254,47 +211,6 @@ class DPI:
                 adjusted_fake_zs.append(adjusted_fake_z)
         return torch.cat(adjusted_fake_zs)
 
-    def compute_powers_and_sizes(self, T_train):
-        powers = {}
-        for cur_lab in self.present_label:
-            idxs = torch.where(self.train_gen.targets == cur_lab)[0]
-            train_data = torch.utils.data.Subset(self.train_gen, idxs)
-            train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
-
-            netI = self.models['I']
-            netI.eval()  # Set the model to evaluation mode
-            p_vals = torch.zeros(len(idxs))
-            with torch.no_grad():
-                for i, (x, _) in enumerate(train_loader):
-                    fake_z = netI(x.to(self.device))
-                    T_batch = torch.sqrt(torch.sum(fake_z ** 2, dim=1) + 1)
-                    for j in range(len(fake_z)):
-                        p = torch.sum(T_train > T_batch[j]) / len(T_train)
-                        p_vals[i * self.batch_size + j] = p.item()
-            powers[cur_lab] = np.sum(np.array(p_vals.numpy()) <= 0.05) / len(idxs)
-
-        sample_sizes = {lab: max(powers.values()) - pow + 0.05 for lab, pow in powers.items()}
-        total = sum(sample_sizes.values())
-        sample_sizes = {lab: int((size / total) * len(idxs)) for lab, size in sample_sizes.items()}
-
-        return sample_sizes
-
-    @staticmethod
-    def next_batch(data_iter, train_loader):
-        try:
-            return next(data_iter)
-        except StopIteration:
-            # Reset the iterator and return the next batch
-            return next(iter(train_loader))
-
-    @staticmethod
-    def freeze_batch_norm_layers(net):
-        for module in net.modules():
-            if isinstance(module, nn.BatchNorm2d) or isinstance(module, nn.BatchNorm1d):
-                module.eval()  # Set the batch norm layer to evaluation mode
-                for param in module.parameters():
-                    param.requires_grad = False  # Disable gradient updates for batch norm parameters
-
     def save_model(self):
         model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
         torch.save(self.models['I'].state_dict(), model_save_file)
@@ -359,108 +275,6 @@ class DPI:
         self.visualize_p(all_p_vals, classes=self.train_gen.classes)
 
         print('Finish validation.')
-
-    def visualize_p(self, all_p_vals, classes):
-        # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
-        present_label = self.present_label
-        all_label = self.all_label
-
-        if len(present_label) == 1:
-            fig, axs = plt.subplots(len(present_label), len(all_label), 
-                                    figsize=(5*len(all_label), 5*len(present_label)))
-
-            matplotlib.rc('xtick', labelsize=15) 
-            matplotlib.rc('ytick', labelsize=15) 
-
-            for i, lab in enumerate(all_label):
-                p_vals_class = all_p_vals[lab]
-                axs[i].set_xlim([0, 1])
-                _ = axs[i].hist(p_vals_class[present_label[0]])
-                prop = np.sum(np.array(p_vals_class[present_label[0]] <= 0.05) / len(p_vals_class[present_label[0]]))
-                prop = np.round(prop, 4)
-                if all_label[i] == present_label[0]:
-                    axs[i].set_title('Type I Error: {}'.format(prop), fontsize = 20)
-                else:
-                    axs[i].set_title('Power: {}'.format(prop), fontsize = 20)
-                if i == 0:
-                    axs[i].set_ylabel(classes[present_label[0]], fontsize = 25)
-                axs[i].set_xlabel(classes[all_label[i]], fontsize = 25)
-        else:
-            fig, axs = plt.subplots(len(present_label), len(all_label), 
-                                    figsize=(5*len(all_label), 5*len(present_label)))
-
-            matplotlib.rc('xtick', labelsize=15) 
-            matplotlib.rc('ytick', labelsize=15) 
-
-            for i, val_lab in enumerate(all_label):
-                p_vals_class = all_p_vals[val_lab]
-                for j, train_lab in enumerate(present_label):
-                    axs[j, i].set_xlim([0, 1])
-                    _ = axs[j, i].hist(p_vals_class[train_lab])
-                    prop = np.sum(np.array(p_vals_class[train_lab] <= 0.05) / len(p_vals_class[train_lab]))
-                    prop = np.round(prop, 4)
-                    if all_label[i] == present_label[j]:
-                        axs[j, i].set_title('Type I Error: {}'.format(prop), fontsize = 20)
-                    else:
-                        axs[j, i].set_title('Power: {}'.format(prop), fontsize = 20)
-                    if i == 0:
-                        axs[j, i].set_ylabel(classes[present_label[j]], fontsize = 25)
-                    if j == len(present_label) - 1:
-                        axs[j, i].set_xlabel(classes[all_label[i]], fontsize = 25)
-        
-        fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validation', fontsize = 25)
-        fig.tight_layout()
-        fig.savefig(f'graphs/{self.timestamp}_size_power.png', dpi=150)
-        plt.close(fig)
-        
-
-    def visualize_T(self, all_fake_Cs, classes):
-        # print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
-        present_label = self.present_label
-        all_label = self.all_label
-        
-        if len(present_label) == 1:
-            fig, axs = plt.subplots(1, len(all_label), 
-                                    figsize=(5*len(all_label), 5*len(present_label)))
-
-            matplotlib.rc('xtick', labelsize=15) 
-            matplotlib.rc('ytick', labelsize=15) 
-            llim = np.min([np.min(vals[present_label[0]]) for vals in all_fake_Cs.values()])
-            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.9)
-            for i, lab in enumerate(all_label):
-                fake_Cs = all_fake_Cs[lab]
-                axs[i].set_ylabel(classes[lab], fontsize = 25)
-                axs[i].set_xlim([llim, rlim])
-                _ = axs[i].hist(fake_Cs[present_label[0]])
-                # axs[i].set_title('Label {} from Label {}\'s net'.format(lab, present_label[0]), fontsize = 20)
-
-                if i == len(all_label) - 1:
-                    axs[i].set_xlabel(classes[present_label[0]], fontsize = 25)
-        else:
-            fig, axs = plt.subplots(len(present_label), len(all_label), 
-                                    figsize=(5*len(all_label), 5*len(present_label)))
-
-            matplotlib.rc('xtick', labelsize=15) 
-            matplotlib.rc('ytick', labelsize=15) 
-            llim = np.min([np.min(list(vals.values())) for vals in all_fake_Cs.values()])
-            rlim = np.quantile(np.concatenate([np.concatenate(list(vals.values())) for vals in all_fake_Cs.values()]), 0.95)
-            for i, val_lab in enumerate(all_label):
-                fake_Cs = all_fake_Cs[val_lab]
-                for j, train_lab in enumerate(present_label):
-                    axs[j, i].set_xlim([llim, rlim])
-                    _ = axs[j, i].hist(fake_Cs[train_lab])
-                    # axs[j, i].set_title('Label {} from Label {}\'s net'.format(val_lab, train_lab))
-                    if i == 0:
-                        axs[j, i].set_ylabel(classes[train_lab], fontsize = 25)
-                    if j == len(present_label) - 1:
-                        axs[j, i].set_xlabel(classes[val_lab], fontsize = 25)
-        
-        fig.supylabel('Training', fontsize = 25)
-        fig.supxlabel('Validation', fontsize = 25)
-        fig.tight_layout()
-        fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
-        plt.close(fig)
 
     def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
         """Save the losses for the training process to the graphs folder."""

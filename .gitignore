@@ -1,8 +1,6 @@
 **/.ipynb_checkpoints/*
 **/__pycache__/*
-mnist_param/*
-fmnist_param/*
-cifar10_param/*
+*.pt
 datasets/*
 _utils/*
 *.png
