@@ -9,8 +9,6 @@ from .mnist import I_MNIST, G_MNIST, D_MNIST
 from .dataloader import get_data_loader
 
 
-
-
 class DPI_ALL(BaseDPI):
     def __init__(self, *args, epochs, **kwargs):
         self.epochs = epochs
@@ -126,7 +124,7 @@ class DPI_ALL(BaseDPI):
             scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=self.gamma)
 
         # Training for this label started
-        for epoch in range(1, self.epochs):
+        for epoch in range(1, self.epochs + 1):
             if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
                 print(f'Epoch = {epoch}')
             data = iter(train_loader)
@@ -142,7 +140,7 @@ class DPI_ALL(BaseDPI):
             for _ in range(self.critic_iter):
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 # fake_x = netG(z)
@@ -151,7 +149,7 @@ class DPI_ALL(BaseDPI):
                 cost_GI = GI_loss(netI, netG, netD, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 mmd = mmd_penalty(fake_z, z, kernel="RBF")
@@ -174,14 +172,14 @@ class DPI_ALL(BaseDPI):
             for _ in range(self.critic_iter_d):
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 netD.zero_grad()
                 cost_D = D_loss(netI, netG, netD, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 gp_D = gradient_penalty_dual(x.data, z.data, netD, netG, netI)
                 dual_cost = cost_D + self.lambda_gp * gp_D
@@ -205,7 +203,7 @@ class DPI_ALL(BaseDPI):
                 x = x.to(self.device)
                 fake_z = netI(x)
                 # Create one-hot encoded y
-                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device)
+                y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 # Subtract the one-hot encoded y from fake_z
                 adjusted_fake_z = fake_z - y_one_hot
                 adjusted_fake_zs.append(adjusted_fake_z)
@@ -216,8 +214,8 @@ class DPI_ALL(BaseDPI):
         torch.save(self.models['I'].state_dict(), model_save_file)
 
     def validate(self):
-        all_p_vals = {}
-        all_fake_Ts = {}
+        all_p_vals = {label: {} for label in self.all_label}
+        all_fake_Ts = {label: {} for label in self.all_label}
 
         # Check if T_train is empty and generate it if necessary
         if self.validation_only:
@@ -234,41 +232,42 @@ class DPI_ALL(BaseDPI):
         else:
             T_train = self.T_train
         em_len = len(T_train)
+
         # Use the single preloaded "I" model
         netI = self.models['I']
-        netI.train()
+        netI.eval()  # Set to evaluation mode
 
-        for lab in self.all_label:
-            if torch.is_tensor(self.test_gen.targets):
-                idxs = torch.where(self.test_gen.targets == lab)[0]
-            else:
-                idxs = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
-            test_data = torch.utils.data.Subset(self.test_gen, idxs)
-            test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+        # Create a single test loader for all classes
+        test_loader = DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=True)
 
-            # Initialize p_vals and fake_Ts for the current iteration
-            fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
-            p_vals = {label: torch.zeros(len(idxs)) for label in self.present_label}
+        fake_Ts = {label: [] for label in self.all_label}
+        p_vals = {label: [] for label in self.all_label}
 
-            for i, (images, y) in enumerate(test_loader):
-                x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
-                with torch.no_grad():
-                    fake_z = netI(x)
+        for images, y in test_loader:
+            x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
+            with torch.no_grad():
+                fake_z = netI(x)
 
-                for label in self.present_label:
-                    # Create one-hot encoded y for the current label
-                    y_one_hot = torch.nn.functional.one_hot(torch.tensor([label] * len(y)), num_classes=len(self.present_label)).float().to(self.device)
-                    # Subtract the one-hot encoded y from fake_z
-                    adjusted_fake_z = fake_z - y_one_hot
-                    
-                    T_batch = torch.sqrt(torch.sum(adjusted_fake_z ** 2, 1) + 1)
-                    for j in range(len(fake_z)):
-                        p = torch.sum(T_train > T_batch[j]) / em_len
-                        fake_Ts[label][i * 1 + j] = T_batch[j].item()
-                        p_vals[label][i * 1 + j] = p.item()
+            for label in self.present_label:
+                # Create one-hot encoded y for the current label
+                y_one_hot = torch.nn.functional.one_hot(torch.tensor([label] * len(y)), num_classes=len(self.present_label)).float().to(self.device) * self.eta
+                # Subtract the one-hot encoded y from fake_z
+                adjusted_fake_z = fake_z - y_one_hot
+                
+                T_batch = torch.sqrt(torch.sum(adjusted_fake_z ** 2, 1) + 1)
+                p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
 
-            all_p_vals[lab] = {k: v.numpy() for k, v in p_vals.items()}
-            all_fake_Ts[lab] = {k: v.numpy() for k, v in fake_Ts.items()}
+                # Store results for each true label
+                for true_label in self.all_label:
+                    mask = (y == true_label)
+                    if mask.any():
+                        fake_Ts[true_label].extend(T_batch[mask].cpu().tolist())
+                        p_vals[true_label].extend(p[mask].cpu().tolist())
+
+        # Convert lists to numpy arrays and store in the main dictionaries
+        for true_label in self.all_label:
+            all_fake_Ts[true_label] = {label: np.array(fake_Ts[true_label]) for label in self.present_label}
+            all_p_vals[true_label] = {label: np.array(p_vals[true_label]) for label in self.present_label}
 
         # Visualize the results
         self.visualize_T(all_fake_Ts, classes=self.train_gen.classes)
@@ -286,9 +285,7 @@ class DPI_ALL(BaseDPI):
         plt.plot(epochs, GI_losses, label='GI Loss', color='black', linestyle='-')    # Black, solid line
         plt.plot(epochs, MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
         plt.plot(epochs, D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
-        # plt.plot(epochs, GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
-        # plt.plot(epochs, Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
-        
+
         # Combine all losses into one array
         all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses])
         # Calculate the 99th percentile

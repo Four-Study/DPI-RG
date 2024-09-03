@@ -298,60 +298,46 @@ class DPI_CLASS(BaseDPI):
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
     def validate(self):
-        all_p_vals = {}
-        all_fake_Ts = {}
+        all_p_vals = {label: {} for label in self.all_label}
+        all_fake_Ts = {label: {} for label in self.all_label}
 
-        # Check if T_trains is empty and generate it if necessary
-        if self.validation_only:
-            for lab in self.present_label:
-                idxs = torch.where(torch.Tensor(self.train_gen.targets) == lab)[0]
-                train_data = torch.utils.data.Subset(self.train_gen, idxs)
-                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+        # Create a single test loader for all classes
+        test_loader = DataLoader(self.test_gen, batch_size=1, shuffle=False)
+
+        for label in self.present_label:
+            T_train = self.T_trains[label]
+            em_len = len(T_train)
+            
+            # Use the preloaded "I" model from self.models
+            netI = self.models[label]['I']
+            # netI.eval()  # Set to evaluation mode
+
+            fake_Ts = {lab: [] for lab in self.all_label}
+            p_vals = {lab: [] for lab in self.all_label}
+
+            for batch in test_loader:
+                images, y = batch
+                x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
+                fake_z = netI(x)
+                T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
                 
-                # Get fake_zs for further training or analysis
-                fake_zs = self.get_fake_zs(lab, train_loader)
-                
-                # Calculate empirical distribution T_train
-                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
-                self.T_trains[lab] = T_train
+                p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
 
-        for lab in self.all_label:
-            if torch.is_tensor(self.test_gen.targets):
-                idxs = torch.where(self.test_gen.targets == lab)[0]
-            else:
-                idxs = torch.where(torch.Tensor(self.test_gen.targets) == lab)[0]
-            test_data = torch.utils.data.Subset(self.test_gen, idxs)
-            test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
+                # Store results for each true label
+                for true_label in self.all_label:
+                    mask = (y == true_label)
+                    if mask.any():
+                        fake_Ts[true_label].extend(T_batch[mask].cpu().tolist())
+                        p_vals[true_label].extend(p[mask].cpu().tolist())
 
-            # Initialize p_vals and fake_Ts for the current iteration
-            fake_Ts = {label: torch.zeros(len(idxs)) for label in self.present_label}
-            p_vals = {label: torch.zeros(len(idxs)) for label in self.present_label}
-
-            for label in self.present_label:
-                T_train = self.T_trains[label]
-                em_len = len(T_train)
-                
-                # Use the preloaded "I" model from self.models
-                netI = self.models[label]['I']
-                netI.train()
-
-                for i, batch in enumerate(test_loader):
-                    images, y = batch
-                    x = images.view(-1, self.nc, self.img_size * self.img_size).to(self.device)
-                    fake_z = netI(x)
-                    T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
-                    for j in range(len(fake_z)):
-                        p1 = torch.sum(T_train > T_batch[j]) / em_len
-                        p = p1
-                        fake_Ts[label][i * 1 + j] = T_batch[j].item()
-                        p_vals[label][i * 1 + j] = p.item()
-
-            all_p_vals[lab] = {k: v.numpy() for k, v in p_vals.items()}
-            all_fake_Ts[lab] = {k: v.numpy() for k, v in fake_Ts.items()}
+            # Convert lists to numpy arrays and store in the main dictionaries
+            for true_label in self.all_label:
+                all_fake_Ts[true_label][label] = np.array(fake_Ts[true_label])
+                all_p_vals[true_label][label] = np.array(p_vals[true_label])
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, classes=self.train_gen.classes)
-        self.visualize_p(all_p_vals, classes=self.train_gen.classes)
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes)
 
         print('Finish validation.')
         
