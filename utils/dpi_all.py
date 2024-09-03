@@ -1,4 +1,3 @@
-import os
 import time
 import torch.optim as optim
 import torch.nn.functional as F
@@ -17,6 +16,7 @@ class DPI_ALL(BaseDPI):
         self.epochs = epochs
         self.T_train = None  
         super().__init__(*args, **kwargs)
+        self.z_dim = len(self.present_label)
 
 
     def setup_models(self):
@@ -212,7 +212,7 @@ class DPI_ALL(BaseDPI):
         return torch.cat(adjusted_fake_zs)
 
     def save_model(self):
-        model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
+        model_save_file = f'{self.params_folder}/{self.timestamp}_model.pt'
         torch.save(self.models['I'].state_dict(), model_save_file)
 
     def validate(self):
@@ -278,8 +278,6 @@ class DPI_ALL(BaseDPI):
 
     def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
         """Save the losses for the training process to the graphs folder."""
-        # Ensure the graphs directory exists
-        os.makedirs('graphs', exist_ok=True)
 
         plt.figure(figsize=(10, 6))
         
@@ -305,5 +303,5 @@ class DPI_ALL(BaseDPI):
         plt.legend()
         
         # Save the plot instead of showing it
-        plt.savefig(f'graphs/{self.timestamp}_losses.png')
+        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses.png')
         plt.close()

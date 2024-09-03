@@ -1,4 +1,3 @@
-import os
 import time
 import torch.optim as optim
 import torch.nn.functional as F
@@ -295,7 +294,7 @@ class DPI_CLASS(BaseDPI):
         return sample_sizes
 
     def save_model(self, label):
-        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
+        model_save_file = f'{self.params_folder}/{self.timestamp}_class{label}.pt'
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
     def validate(self):
@@ -359,8 +358,6 @@ class DPI_CLASS(BaseDPI):
 
     def save_loss_plots(self, label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses):
         """Save the losses for the training process to the graphs folder."""
-        # Ensure the graphs directory exists
-        os.makedirs('graphs', exist_ok=True)
 
         plt.figure(figsize=(10, 6))
         
@@ -386,5 +383,5 @@ class DPI_CLASS(BaseDPI):
         plt.legend()
         
         # Save the plot instead of showing it
-        plt.savefig(f'graphs/{self.timestamp}_losses_class{label}.png')
+        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses_class{label}.png')
         plt.close()

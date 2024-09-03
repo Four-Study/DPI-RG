@@ -1,24 +1,17 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import os
-import time
 from datetime import datetime
 
+import os
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader
-from .losses import *
-from .mnist import I_MNIST, G_MNIST, D_MNIST
 from .dataloader import get_dataset
 
 class BaseDPI:
     def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, 
                  lambda_mmd, lambda_gp, eta, std, present_label, missing_label=[], 
-                 img_size=28, nc=1, critic_iter=10, critic_iter_d=10, decay_epochs=None, 
+                 img_size=28, nc=1, critic_iter=3, critic_iter_d=3, decay_epochs=None, 
                  gamma=0.2, device=None, timestamp=None):
         # Common initialization code
         self.dataset_name = dataset_name
@@ -43,6 +36,10 @@ class BaseDPI:
         self.present_label = present_label
         self.missing_label = missing_label
         self.all_label = self.present_label + self.missing_label
+        self.z_dim = len(present_label) if not hasattr(self, 'z_dim') else self.z_dim
+        self.models = {}
+        self.optimizers = {}
+        self.T_train = None
         
         # Set timestamp and mode
         if timestamp is None:
@@ -53,13 +50,17 @@ class BaseDPI:
             self.validation_only = True
         
         print(f"Current timestamp: {self.timestamp}")
-        
-        self.models = {}
-        self.optimizers = {}
-        self.T_train = None
 
         # Initialize or load models
         self.setup_models()
+
+        # Save folder paths as instance variables
+        self.graphs_folder = f'{dataset_name}_graphs'
+        self.params_folder = f'{dataset_name}_params'
+
+        # Create the folders for saving plots
+        os.makedirs(self.graphs_folder, exist_ok=True)
+        os.makedirs(self.params_folder, exist_ok=True)
 
     def setup_models(self):
         # This method should be implemented in child classes
@@ -79,18 +80,14 @@ class BaseDPI:
 
     def load_inverse_model(self):
         # Common model loading logic
-        model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
-        netI = self.get_I_model()  # This method should be implemented in child classes
-        netI = nn.DataParallel(netI)
-        try:
-            netI.load_state_dict(torch.load(model_save_file))
-            self.models = {'I': netI}
-            print(f"Successfully loaded model from {model_save_file}.")
-        except Exception as e:
-            raise FileNotFoundError(f"Failed to load model at {model_save_file}. Error: {e}")
+        raise NotImplementedError("Subclass must implement abstract method")
 
     def get_fake_zs(self, train_loader):
         # Common logic for getting fake zs
+        raise NotImplementedError("Subclass must implement abstract method")
+    
+    def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
+        # Common logic for saving loss plots
         raise NotImplementedError("Subclass must implement abstract method")
 
     @staticmethod
@@ -108,10 +105,6 @@ class BaseDPI:
                 for param in module.parameters():
                     param.requires_grad = False  # Disable gradient updates for batch norm parameters
 
-
-    def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
-        # Common logic for saving loss plots
-        raise NotImplementedError("Subclass must implement abstract method")
     
     def visualize_p(self, all_p_vals, classes):
         # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
@@ -164,7 +157,7 @@ class BaseDPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'graphs/{self.timestamp}_size_power.png', dpi=150)
+        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_size_power.png', dpi=150)
         plt.close(fig)
         
 
@@ -212,5 +205,5 @@ class BaseDPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'graphs/{self.timestamp}_fake_T.png', dpi=150)
+        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)
