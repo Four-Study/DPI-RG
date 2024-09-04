@@ -87,27 +87,28 @@ class DPI_CLASS(BaseDPI):
                 GI_losses=GI_losses, MMD_losses=MMD_losses,
                 D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
             )
+            
+            if self.epochs2 - self.epochs1 > 0:
+                # Get fake_zs for further training or analysis
+                fake_zs = self.get_fake_zs(label, train_loader)
 
-            # Get fake_zs for further training or analysis
-            fake_zs = self.get_fake_zs(label, train_loader)
+                # Calculate empirical distribution T_train
+                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
 
-            # Calculate empirical distribution T_train
-            T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+                # Compute powers and new sample sizes
+                sample_sizes = self.compute_powers_and_sizes(T_train, label)
 
-            # Compute powers and new sample sizes
-            sample_sizes = self.compute_powers_and_sizes(T_train, label)
+                # Freeze batch normalization layers before the second round of training
+                # self.freeze_batch_norm_layers(netI)
 
-            # Freeze batch normalization layers before the second round of training
-            # self.freeze_batch_norm_layers(netI)
-
-            # Second round of training with new sample sizes
-            self.train_label(
-                label, netI, netG, netD, optim_I, optim_G, optim_D,
-                train_loader, self.epochs1, self.epochs2,
-                sample_sizes=sample_sizes, 
-                GI_losses=GI_losses, MMD_losses=MMD_losses,
-                D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
-            )
+                # Second round of training with new sample sizes
+                self.train_label(
+                    label, netI, netG, netD, optim_I, optim_G, optim_D,
+                    train_loader, self.epochs1, self.epochs2,
+                    sample_sizes=sample_sizes, 
+                    GI_losses=GI_losses, MMD_losses=MMD_losses,
+                    D_losses=D_losses, GP_losses=GP_losses, Power_losses=Power_losses
+                )
 
             # Save the trained model
             self.save_model(label)
