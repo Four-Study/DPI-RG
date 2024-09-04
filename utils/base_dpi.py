@@ -55,8 +55,8 @@ class BaseDPI:
         self.setup_models()
 
         # Save folder paths as instance variables
-        self.graphs_folder = f'{dataset_name}_graphs'
-        self.params_folder = f'{dataset_name}_params'
+        self.graphs_folder = f'graphs_{dataset_name}'
+        self.params_folder = f'params_{dataset_name}'
 
         # Create the folders for saving plots
         os.makedirs(self.graphs_folder, exist_ok=True)
