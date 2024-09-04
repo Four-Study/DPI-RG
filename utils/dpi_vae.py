@@ -9,13 +9,16 @@ import torchvision.utils as vutils
 from torch.utils.data import DataLoader, Subset
 
 class DPI_VAE:
-    def __init__(self, nc, ngf, ndf, nclass, lr, device):
+    def __init__(self, nc, ngf, ndf, nclass, lr, device, present_label, missing_label = []):
         self.nc = nc
         self.ngf = ngf
         self.ndf = ndf
         self.nclass = nclass
         self.const = nclass ** 0.5 + 3
         self.device = device
+        self.present_label = present_label
+        self.missing_label = missing_label
+        self.all_label = present_label + missing_label
 
         self.model = ConvVAE(nclass, nc, ngf, ndf).to(device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
@@ -98,11 +101,14 @@ class DPI_VAE:
             empiricals.append(empirical)
         return empiricals
 
-    def validate(self, testset_A, batch_size, present_label, all_label, empiricals, side='one-sided'):
-        self.model.eval()
-        nclass = len(present_label)
+    def validate(self, testset_A, batch_size, empiricals, side='one-sided'):
+        
+        nclass = self.nclass
+        present_label = self.present_label
+        all_label = self.all_label
         p_vals_classes = []
         all_fake_Cs = []
+        self.model.eval()
         
         for lab in all_label:    
             if torch.is_tensor(testset_A.targets):
