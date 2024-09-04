@@ -188,7 +188,7 @@ class G_MNIST(nn.Module):
 #         return output.squeeze(1)
     
 class D_MNIST(nn.Module):
-    def __init__(self, nz, ndf = 32, power = 6):
+    def __init__(self, nz, ndf = 32, power = 5):
         super(D_MNIST, self).__init__()
         self.power = power
         layers = [
@@ -214,10 +214,8 @@ class D_MNIST(nn.Module):
         self.main = nn.Sequential(*layers)
 
     def forward(self, input):
-        # print(input.shape)
         # dist = nn.PairwiseDistance(input, p=2)
         powers = [i for i in range(0, self.power)]
         input = torch.cat([torch.pow(input, i) for i in powers], dim=1)
-        # print(powers.shape)
         output = self.main(input)
         return output.squeeze(1)
