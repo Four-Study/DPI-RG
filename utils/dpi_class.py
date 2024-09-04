@@ -357,7 +357,7 @@ class DPI_CLASS(BaseDPI):
         
         # Combine all losses into one array
         all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses, Power_losses])
-        # Calculate the 99th percentile
+        # Calculate the upper quantile 
         uq = np.percentile(all_losses, 99.5)
         min_loss = np.min(all_losses)
 

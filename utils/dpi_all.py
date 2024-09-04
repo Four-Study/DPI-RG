@@ -238,7 +238,7 @@ class DPI_ALL(BaseDPI):
         netI.eval()  # Set to evaluation mode
 
         # Create a single test loader for all classes
-        test_loader = DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=True)
+        test_loader = DataLoader(self.test_gen, batch_size=1, shuffle=True)
 
         fake_Ts = {label: [] for label in self.all_label}
         p_vals = {label: [] for label in self.all_label}
@@ -288,8 +288,8 @@ class DPI_ALL(BaseDPI):
 
         # Combine all losses into one array
         all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses])
-        # Calculate the 99th percentile
-        uq = np.percentile(all_losses, 99)
+        # Calculate the upper quantile 
+        uq = np.percentile(all_losses, 99.5)
         min_loss = np.min(all_losses)
 
         # Set y-axis limits

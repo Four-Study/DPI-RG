@@ -173,7 +173,7 @@ class BaseDPI:
             matplotlib.rc('xtick', labelsize=15) 
             matplotlib.rc('ytick', labelsize=15) 
             llim = np.min([np.min(vals[present_label[0]]) for vals in all_fake_Cs.values()])
-            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.9)
+            rlim = np.quantile(np.concatenate([vals[present_label[0]] for vals in all_fake_Cs.values()]), 0.98)
             for i, lab in enumerate(all_label):
                 fake_Cs = all_fake_Cs[lab]
                 axs[i].set_ylabel(classes[lab], fontsize = 25)
