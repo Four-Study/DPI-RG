@@ -380,6 +380,9 @@ class DPI_CLASS(BaseDPI):
         plt.plot(epochs, D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
         # plt.plot(epochs, GP_losses, label='GP Loss', color='red', linestyle=':')      # Red, dotted line
         plt.plot(epochs, Power_losses, label='Power Loss', color='purple', linestyle=':') # Purple, solid line
+
+        # Add vertical line at self.epochs1
+        plt.axvline(x=self.epochs1, color='red', linestyle='-', label='Change of alternative samples')
         
         # Combine all losses into one array
         all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses, Power_losses])
