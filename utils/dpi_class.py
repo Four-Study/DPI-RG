@@ -1,4 +1,5 @@
 import time
+import seaborn as sns
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
@@ -70,7 +71,7 @@ class DPI_CLASS(BaseDPI):
         for label in self.present_label:
             print(f"{'-'*100}\nStart to train label: {label}\n{'-'*100}")
 
-            train_loader = train_loader = get_data_loader(self.train_gen, [label], self.batch_size)
+            train_loader = get_data_loader(self.train_gen, [label], self.batch_size)
 
             # Retrieve models and optimizers for the current label
             netI, netG, netD = self.models[label]['I'], self.models[label]['G'], self.models[label]['D']
@@ -96,7 +97,7 @@ class DPI_CLASS(BaseDPI):
                 T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
 
                 # Compute powers and new sample sizes
-                sample_sizes = self.compute_powers_and_sizes(T_train, label)
+                sample_sizes = self.compute_sample_sizes(T_train, label)
 
                 # Freeze batch normalization layers before the second round of training
                 # self.freeze_batch_norm_layers(netI)
@@ -123,6 +124,9 @@ class DPI_CLASS(BaseDPI):
             # Save the loss plots to the graphs folder
             self.save_loss_plots(label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses)
         
+        # Visualize T_trains distribution after training all labels
+        self.visualize_T_trains()
+
         end_time = time.time()
         training_time = end_time - start_time
         hours, remainder = divmod(training_time, 3600)
@@ -268,7 +272,7 @@ class DPI_CLASS(BaseDPI):
                 fake_zs.append(fake_z)
         return torch.cat(fake_zs)
 
-    def compute_powers_and_sizes(self, T_train, label):
+    def compute_sample_sizes(self, T_train, label):
         powers = {}
         for cur_lab in self.present_label:
             if cur_lab != label:
@@ -341,7 +345,28 @@ class DPI_CLASS(BaseDPI):
         self.visualize_p(all_p_vals, classes=self.test_gen.classes)
 
         print('Finish validation.')
+    
+    def visualize_T_trains(self):
+        """Visualize the distribution of T_trains for all labels in a single row."""
+        num_classes = len(self.T_trains)
         
+        fig, axes = plt.subplots(1, num_classes, figsize=(3*num_classes, 4))
+        fig.suptitle('Distribution of T_trains for all classes', fontsize=16)
+
+        for idx, label in enumerate(self.present_label):
+            ax = axes[idx]
+
+            T_train = self.T_trains[label]
+            sns.kdeplot(T_train.cpu().numpy(), fill=True, ax=ax)
+            ax.set_title(f'Class {label}')
+            ax.set_xlabel('T values')
+            ax.set_ylabel('Density')
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
+        
+        # Save the plot
+        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_T_trains.png')
+        plt.close()
 
     def save_loss_plots(self, label, GI_losses, MMD_losses, D_losses, GP_losses, Power_losses):
         """Save the losses for the training process to the graphs folder."""

@@ -1,4 +1,5 @@
 import time
+import seaborn as sns
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import StepLR
@@ -90,6 +91,9 @@ class DPI_ALL(BaseDPI):
 
         # Save the loss plots to the graphs folder
         self.save_loss_plots(GI_losses, MMD_losses, D_losses, GP_losses)
+
+        # Visualize T_trains distribution after training
+        self.visualize_T_train()
 
         end_time = time.time()
         training_time = end_time - start_time
@@ -274,6 +278,22 @@ class DPI_ALL(BaseDPI):
         self.visualize_p(all_p_vals, classes=self.train_gen.classes)
 
         print('Finish validation.')
+
+    def visualize_T_train(self):
+        """Visualize the distribution of T_train."""
+        plt.figure(figsize=(10, 6))
+        plt.title('Distribution of T_train', fontsize=16)
+
+        T_train = self.T_train.cpu().numpy()
+        sns.kdeplot(T_train, fill=True)
+
+        plt.xlabel('T values')
+        plt.ylabel('Density')
+        plt.tight_layout()
+
+        # Save the plot
+        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_T_train.png')
+        plt.close()
 
     def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
         """Save the losses for the training process to the graphs folder."""
