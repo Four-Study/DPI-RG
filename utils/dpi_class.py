@@ -100,7 +100,7 @@ class DPI_CLASS(BaseDPI):
                 sample_sizes = self.compute_sample_sizes(T_train, label)
 
                 # Freeze batch normalization layers before the second round of training
-                # self.freeze_batch_norm_layers(netI)
+                self.freeze_batch_norm_layers(netI)
 
                 # Second round of training with new sample sizes
                 self.train_label(
@@ -165,6 +165,41 @@ class DPI_CLASS(BaseDPI):
             if (epoch - 1) % max(self.epochs2 // 4, 1) == 0 or epoch == self.epochs2:
                 print(f'Epoch = {epoch}')
             data = iter(train_loader)
+
+            # Train in alternative hypothesis
+            idxs2 = torch.Tensor([])
+            for cur_lab in self.present_label:
+                if cur_lab != label:
+                    temp = sampled_idxs[cur_lab]
+                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
+            idxs2 = idxs2.int()
+            train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
+            train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
+            data2 = iter(train_loader2)
+            
+            # 3. Update I network
+            for p in netD.parameters():
+                p.requires_grad = False
+            for p in netI.parameters():
+                p.requires_grad = True
+            for p in netG.parameters():
+                p.requires_grad = False
+                
+            for _ in range(self.critic_iter_p):
+                images, _ = self.next_batch(data2, train_loader2)
+                x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
+                bs = len(x)
+                
+                z = torch.ones(bs, self.z_dim, 1, 1, device=self.device) * self.eta
+                x = x.to(self.device)
+                fake_z = netI(x)
+
+                netI.zero_grad()
+                loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
+                loss_power.backward()
+                optim_I.step()
+
+            Power_losses.append(loss_power.cpu().item())
             
             # 1. Update G, I network
             for p in netD.parameters():
@@ -221,41 +256,6 @@ class DPI_CLASS(BaseDPI):
                 
             D_losses.append(cost_D.cpu().item())
             GP_losses.append(self.lambda_gp * gp_D.cpu().item())
-
-            # Train in alternative hypothesis
-            idxs2 = torch.Tensor([])
-            for cur_lab in self.present_label:
-                if cur_lab != label:
-                    temp = sampled_idxs[cur_lab]
-                    idxs2 = torch.cat([idxs2, temp[np.random.choice(len(temp), sample_sizes[cur_lab], replace=imbalanced)]])
-            idxs2 = idxs2.int()
-            train_data2 = torch.utils.data.Subset(self.train_gen, idxs2)
-            train_loader2 = DataLoader(train_data2, batch_size=self.batch_size)
-            data2 = iter(train_loader2)
-            
-            # 3. Update I network
-            for p in netD.parameters():
-                p.requires_grad = False
-            for p in netI.parameters():
-                p.requires_grad = True
-            for p in netG.parameters():
-                p.requires_grad = False
-                
-            for _ in range(self.critic_iter_p):
-                images, _ = self.next_batch(data2, train_loader2)
-                x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
-                bs = len(x)
-                
-                z = torch.ones(bs, self.z_dim, 1, 1, device=self.device) * self.eta
-                x = x.to(self.device)
-                fake_z = netI(x)
-
-                netI.zero_grad()
-                loss_power = self.lambda_power * I_loss(fake_z, z.reshape(bs, self.z_dim))
-                loss_power.backward()
-                optim_I.step()
-
-            Power_losses.append(loss_power.cpu().item())
             
             if isinstance(self.decay_epochs, int):
                 scheduler_I.step()
