@@ -92,6 +92,14 @@ class BaseDPI:
         # Common logic for saving loss plots
         raise NotImplementedError("Subclass must implement abstract method")
 
+    def generate_fixed_noise(self):
+        # Common logic for saving loss plots
+        raise NotImplementedError("Subclass must implement abstract method")
+
+    def display_fake_images(self, netG):
+        # Common logic for saving loss plots
+        raise NotImplementedError("Subclass must implement abstract method")
+    
     @staticmethod
     def next_batch(data_iter, train_loader):
         try:
@@ -107,7 +115,7 @@ class BaseDPI:
                 for param in module.parameters():
                     param.requires_grad = False  # Disable gradient updates for batch norm parameters
 
-    
+
     def visualize_p(self, all_p_vals, classes):
         # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
         present_label = self.present_label

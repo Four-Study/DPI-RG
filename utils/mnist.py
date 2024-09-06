@@ -188,7 +188,7 @@ class G_MNIST(nn.Module):
 #         return output.squeeze(1)
     
 class D_MNIST(nn.Module):
-    def __init__(self, nz, ndf = 32, power = 6):
+    def __init__(self, nz, ndf = 16, power = 6):
         super(D_MNIST, self).__init__()
         self.power = power
         layers = [

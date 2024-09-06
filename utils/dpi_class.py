@@ -2,6 +2,7 @@ import time
 import seaborn as sns
 import torch.optim as optim
 import torch.nn.functional as F
+import torchvision.utils as vutils
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from .base_dpi import BaseDPI
@@ -52,7 +53,7 @@ class DPI_CLASS(BaseDPI):
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
-            netI.load_state_dict(torch.load(model_save_file))
+            netI.load_state_dict(torch.load(model_save_file, weights_only=True))
             self.models[label] = {'I': netI}
             print(f"Successfully loaded model for label {label} from {model_save_file}.")
         except Exception as e:
@@ -65,11 +66,13 @@ class DPI_CLASS(BaseDPI):
             print("Training is not allowed when a timestamp is provided. Exiting the train method.")
             return
         
-        print(f"{'-'*100}\nStart training\n{'-'*100}")    
+        print(f"{'-'*50}\nStart training\n{'-'*50}")    
         start_time = time.time()
         
         for label in self.present_label:
-            print(f"{'-'*100}\nStart to train label: {label}\n{'-'*100}")
+            print(f"{'-'*50}\nStart to train label: {label}\n{'-'*50}")
+
+            self.fixed_noise = self.generate_fixed_noise()
 
             train_loader = get_data_loader(self.train_gen, [label], self.batch_size)
 
@@ -131,10 +134,10 @@ class DPI_CLASS(BaseDPI):
         training_time = end_time - start_time
         hours, remainder = divmod(training_time, 3600)
         minutes, seconds = divmod(remainder, 60)
-        print(f"{'-'*100}")
+        print(f"{'-'*50}")
         print(f"Finish training")
         print(f"Total training time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
-        print(f"{'-'*100}")
+        print(f"{'-'*50}")
 
     def train_label(self, label, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, start_epoch, end_epoch, 
             sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
@@ -164,6 +167,8 @@ class DPI_CLASS(BaseDPI):
         for epoch in range(start_epoch + 1, end_epoch + 1):
             if (epoch - 1) % max(self.epochs2 // 4, 1) == 0 or epoch == self.epochs2:
                 print(f'Epoch = {epoch}')
+                self.display_fake_images(netG)
+
             data = iter(train_loader)
 
             # Train in alternative hypothesis
@@ -509,3 +514,17 @@ class DPI_CLASS(BaseDPI):
         # Save the plot instead of showing it
         plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses_class{label}.png')
         plt.close()
+
+    def generate_fixed_noise(self):
+        fixed_noise = torch.randn(2 * 10, self.z_dim, device=self.device) * self.std
+        return fixed_noise
+
+    def display_fake_images(self, netG):
+        with torch.no_grad():
+            fake = netG(self.fixed_noise.view(2 * 10, self.z_dim)).view(-1, 1, 28, 28)
+        
+        plt.figure(figsize=(10, 2))
+        plt.axis("off")
+        plt.title("Fake Images")
+        plt.imshow(np.transpose(vutils.make_grid(fake.cpu(), nrow=10, padding=2, normalize=True), (1, 2, 0)))
+        plt.show()

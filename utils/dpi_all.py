@@ -60,7 +60,7 @@ class DPI_ALL(BaseDPI):
             print("Training is not allowed when a timestamp is provided. Exiting the train method.")
             return
 
-        print(f"{'-'*100}\nStart training\n{'-'*100}")
+        print(f"{'-'*50}\nStart training\n{'-'*50}")
         start_time = time.time()
 
         self.fixed_noise = self.generate_fixed_noise()
@@ -103,10 +103,10 @@ class DPI_ALL(BaseDPI):
         hours, remainder = divmod(training_time, 3600)
         minutes, seconds = divmod(remainder, 60)
         
-        print(f"{'-'*100}")
+        print(f"{'-'*50}")
         print(f"Finish training")
         print(f"Total training time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
-        print(f"{'-'*100}")
+        print(f"{'-'*50}")
 
     def train_epoch(self, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, 
             sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
@@ -134,7 +134,7 @@ class DPI_ALL(BaseDPI):
         for epoch in range(1, self.epochs + 1):
             if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
                 print(f'Epoch = {epoch}')
-                self.display_fake_images()
+                self.display_fake_images(netG)
 
             data = iter(train_loader)
             
@@ -330,7 +330,7 @@ class DPI_ALL(BaseDPI):
 
     def generate_fixed_noise(self):
         nclass = len(self.present_label)
-        fixed_noise = torch.randn(4 * nclass, nclass, device=self.device) * self.std
+        fixed_noise = torch.randn(4 * nclass, self.z_dim, device=self.device) * self.std
         add = F.one_hot(torch.arange(nclass, device=self.device).repeat(4), nclass)
         fixed_noise += add * self.eta
         return fixed_noise
@@ -338,7 +338,7 @@ class DPI_ALL(BaseDPI):
     def display_fake_images(self, netG):
         nclass = len(self.present_label)
         with torch.no_grad():
-            fake = netG(self.fixed_noise.view(4 * nclass, nclass)).view(-1, 1, 28, 28)
+            fake = netG(self.fixed_noise.view(4 * nclass, self.z_dim)).view(-1, 1, 28, 28)
         
         plt.figure(figsize=(nclass, 4))
         plt.axis("off")
