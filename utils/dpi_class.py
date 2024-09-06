@@ -48,7 +48,7 @@ class DPI_CLASS(BaseDPI):
 
     def load_inverse_model(self, label):
         """Load the pre-trained 'I' model for validation."""
-        model_save_file = f'fmnist_param/{self.timestamp}_class{label}.pt'
+        model_save_file = f'{self.params_folder}/{self.timestamp}_class{label}.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
@@ -100,7 +100,7 @@ class DPI_CLASS(BaseDPI):
                 sample_sizes = self.compute_sample_sizes(T_train, label)
 
                 # Freeze batch normalization layers before the second round of training
-                self.freeze_batch_norm_layers(netI)
+                # self.freeze_batch_norm_layers(netI)
 
                 # Second round of training with new sample sizes
                 self.train_label(
@@ -345,6 +345,77 @@ class DPI_CLASS(BaseDPI):
         self.visualize_p(all_p_vals, classes=self.test_gen.classes)
 
         print('Finish validation.')
+
+def validate_w_classifier(self, classifier):
+    all_p_vals = {label: [] for label in self.all_label}
+    all_fake_Ts = {label: [] for label in self.all_label}
+
+    # Set classifier to evaluation mode
+    classifier.eval()
+
+    # Create a single test loader for all classes
+    test_loader = DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False)
+
+    # First, classify all images
+    predicted_labels = []
+    true_labels = []
+    all_images = []
+    with torch.no_grad():
+        for images, labels in test_loader:
+            x = images.to(self.device)
+            outputs = classifier(x)
+            _, preds = torch.max(outputs, 1)
+            predicted_labels.extend(preds.cpu().numpy())
+            true_labels.extend(labels.cpu().numpy())
+            all_images.extend(images)
+
+    predicted_labels = np.array(predicted_labels)
+    true_labels = np.array(true_labels)
+
+    # Process images class by class based on classifier predictions
+    for pred_label in self.present_label:
+        # Get indices of images classified as this label
+        indices = np.where(predicted_labels == pred_label)[0]
+        
+        if len(indices) == 0:
+            continue  # Skip if no images were classified as this label
+
+        # Get the corresponding images
+        class_images = torch.stack([all_images[i] for i in indices])
+        class_loader = DataLoader(class_images, batch_size=self.batch_size)
+
+        netI = self.models[pred_label]['I']
+        T_train = self.T_trains[pred_label]
+        em_len = len(T_train)
+
+        fake_Ts = []
+        p_vals = []
+
+        for batch in class_loader:
+            x = batch.to(self.device)
+            fake_z = netI(x)
+            T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
+            p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
+
+            fake_Ts.extend(T_batch.cpu().numpy())
+            p_vals.extend(p.cpu().numpy())
+
+        # Store results using true labels
+        for i, idx in enumerate(indices):
+            true_label = true_labels[idx]
+            all_fake_Ts[true_label].append(fake_Ts[i])
+            all_p_vals[true_label].append(p_vals[i])
+
+    # Convert lists to numpy arrays
+    for true_label in self.all_label:
+        all_fake_Ts[true_label] = np.array(all_fake_Ts[true_label])
+        all_p_vals[true_label] = np.array(all_p_vals[true_label])
+
+    # Visualize the results
+    self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
+    self.visualize_p(all_p_vals, classes=self.test_gen.classes)
+
+    print('Finish validation with classifier.')
     
     def visualize_T_trains(self):
         """Visualize the distribution of T_trains for all labels in a single row."""

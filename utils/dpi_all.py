@@ -43,7 +43,7 @@ class DPI_ALL(BaseDPI):
 
     def load_inverse_model(self):
         """Load the pre-trained 'I' model for validation."""
-        model_save_file = f'fmnist_param/{self.timestamp}_model.pt'
+        model_save_file = f'{self.params_folder}/{self.timestamp}_model.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
