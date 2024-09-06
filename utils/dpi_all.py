@@ -2,6 +2,7 @@ import time
 import seaborn as sns
 import torch.optim as optim
 import torch.nn.functional as F
+import torchvision.utils as vutils
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from .base_dpi import BaseDPI
@@ -61,6 +62,8 @@ class DPI_ALL(BaseDPI):
 
         print(f"{'-'*100}\nStart training\n{'-'*100}")
         start_time = time.time()
+
+        self.fixed_noise = self.generate_fixed_noise()
 
         train_loader = get_data_loader(self.train_gen, self.present_label, self.batch_size)
 
@@ -131,6 +134,8 @@ class DPI_ALL(BaseDPI):
         for epoch in range(1, self.epochs + 1):
             if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
                 print(f'Epoch = {epoch}')
+                self.display_fake_images()
+
             data = iter(train_loader)
             
             # 1. Update G, I network
@@ -322,3 +327,21 @@ class DPI_ALL(BaseDPI):
         # Save the plot instead of showing it
         plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses.png')
         plt.close()
+
+    def generate_fixed_noise(self):
+        nclass = len(self.present_label)
+        fixed_noise = torch.randn(4 * nclass, nclass, device=self.device) * self.std
+        add = F.one_hot(torch.arange(nclass, device=self.device).repeat(4), nclass)
+        fixed_noise += add * self.eta
+        return fixed_noise
+
+    def display_fake_images(self, netG):
+        nclass = len(self.present_label)
+        with torch.no_grad():
+            fake = netG(self.fixed_noise.view(4 * nclass, nclass)).view(-1, 1, 28, 28)
+        
+        plt.figure(figsize=(nclass, 4))
+        plt.axis("off")
+        plt.title("Fake Images")
+        plt.imshow(np.transpose(vutils.make_grid(fake.cpu(), nrow=nclass, padding=2, normalize=True), (1, 2, 0)))
+        plt.show()
