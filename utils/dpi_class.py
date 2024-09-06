@@ -388,54 +388,61 @@ class DPI_CLASS(BaseDPI):
         predicted_labels = []
         with torch.no_grad():
             for images, labels in DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False):
-                x = images.to(self.device)
+                # Filter for present labels
+                mask = torch.tensor([label in self.present_label for label in labels])
+                if not mask.any():
+                    continue
+                
+                images = images[mask]
+                labels = labels[mask]
+                
+                x = images.view(images.shape[0], -1).to(self.device)
                 outputs = classifier(x)
                 _, preds = torch.max(outputs, 1)
                 predicted_labels.extend(preds.cpu().numpy())
                 all_images.extend(images)
                 all_labels.extend(labels)
 
-        # Create a custom dataset that orders data by predicted labels
-        class OrderedDataset(torch.utils.data.Dataset):
-            def __init__(self, images, labels, predicted_labels):
-                self.images = images
-                self.labels = labels
-                self.predicted_labels = predicted_labels
-                self.indices = sorted(range(len(predicted_labels)), key=lambda k: predicted_labels[k])
+        # Sort the data based on predicted labels
+        sorted_indices = sorted(range(len(predicted_labels)), key=lambda k: predicted_labels[k])
+        sorted_images = [all_images[i] for i in sorted_indices]
+        sorted_labels = [all_labels[i] for i in sorted_indices]
 
-            def __len__(self):
-                return len(self.images)
+        # Create grouped_data to replace test_loader
+        grouped_data = {lab: {'images': [], 'labels': []} for lab in self.all_label}
 
-            def __getitem__(self, idx):
-                return self.images[self.indices[idx]], self.labels[self.indices[idx]]
+        for idx, label in enumerate(sorted_labels):
+            grouped_data[label.item()]['images'].append(sorted_images[idx])
+            grouped_data[label.item()]['labels'].append(label.item())
 
-        ordered_dataset = OrderedDataset(all_images, all_labels, predicted_labels)
-        test_loader = DataLoader(ordered_dataset, batch_size=self.batch_size, shuffle=False)
-
+        # Process data for each present label
         for label in self.present_label:
             T_train = self.T_trains[label]
             em_len = len(T_train)
             
             # Use the preloaded "I" model from self.models
             netI = self.models[label]['I']
-
+            
             fake_Ts = {lab: [] for lab in self.all_label}
             p_vals = {lab: [] for lab in self.all_label}
 
-            for batch in test_loader:
-                images, y = batch
-                x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
-                fake_z = netI(x)
+            # Iterate over grouped_data instead of test_loader
+            for true_label, data in grouped_data.items():
+                images = torch.stack(data['images']).to(self.device)
+                y = torch.tensor(data['labels']).to(self.device)
+                
+                # Process the images using your model
+                fake_z = netI(images)
                 T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
                 
+                # Compute probabilities (same as before)
                 p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
 
                 # Store results for each true label
-                for true_label in self.all_label:
-                    mask = (y == true_label)
-                    if mask.any():
-                        fake_Ts[true_label].extend(T_batch[mask].cpu().tolist())
-                        p_vals[true_label].extend(p[mask].cpu().tolist())
+                mask = (y == true_label).cpu()
+                if mask.any():
+                    fake_Ts[true_label].extend(T_batch[mask].cpu().tolist())
+                    p_vals[true_label].extend(p[mask].cpu().tolist())
 
             # Convert lists to numpy arrays and store in the main dictionaries
             for true_label in self.all_label:
