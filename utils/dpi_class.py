@@ -303,8 +303,23 @@ class DPI_CLASS(BaseDPI):
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
     def validate(self):
+
         all_p_vals = {label: {} for label in self.all_label}
         all_fake_Ts = {label: {} for label in self.all_label}
+    
+        # Calculate T_trains for present labels first
+        if self.validation_only:
+            for label in self.present_label:
+                idxs = torch.where(self.train_gen.targets == label)[0]
+                train_data = torch.utils.data.Subset(self.train_gen, idxs)
+                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+                
+                # Get fake_zs for further training or analysis
+                fake_zs = self.get_fake_zs(label, train_loader)
+                
+                # Calculate empirical distribution T_train
+                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+                self.T_trains[label] = T_train
 
         # Create a single test loader for all classes
         test_loader = DataLoader(self.test_gen, batch_size=1, shuffle=False)
@@ -346,76 +361,92 @@ class DPI_CLASS(BaseDPI):
 
         print('Finish validation.')
 
-def validate_w_classifier(self, classifier):
-    all_p_vals = {label: [] for label in self.all_label}
-    all_fake_Ts = {label: [] for label in self.all_label}
+    def validate_w_classifier(self, classifier):
+        all_p_vals = {label: {} for label in self.all_label}
+        all_fake_Ts = {label: {} for label in self.all_label}
 
-    # Set classifier to evaluation mode
-    classifier.eval()
+        # Calculate T_trains for present labels first
+        if self.validation_only:
+            for label in self.present_label:
+                idxs = torch.where(self.train_gen.targets == label)[0]
+                train_data = torch.utils.data.Subset(self.train_gen, idxs)
+                train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
+                
+                # Get fake_zs for further training or analysis
+                fake_zs = self.get_fake_zs(label, train_loader)
+                
+                # Calculate empirical distribution T_train
+                T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
+                self.T_trains[label] = T_train
 
-    # Create a single test loader for all classes
-    test_loader = DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False)
+        # Set classifier to evaluation mode
+        classifier.eval()
 
-    # First, classify all images
-    predicted_labels = []
-    true_labels = []
-    all_images = []
-    with torch.no_grad():
-        for images, labels in test_loader:
-            x = images.to(self.device)
-            outputs = classifier(x)
-            _, preds = torch.max(outputs, 1)
-            predicted_labels.extend(preds.cpu().numpy())
-            true_labels.extend(labels.cpu().numpy())
-            all_images.extend(images)
+        # First, classify all images
+        all_images = []
+        all_labels = []
+        predicted_labels = []
+        with torch.no_grad():
+            for images, labels in DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False):
+                x = images.to(self.device)
+                outputs = classifier(x)
+                _, preds = torch.max(outputs, 1)
+                predicted_labels.extend(preds.cpu().numpy())
+                all_images.extend(images)
+                all_labels.extend(labels)
 
-    predicted_labels = np.array(predicted_labels)
-    true_labels = np.array(true_labels)
+        # Create a custom dataset that orders data by predicted labels
+        class OrderedDataset(torch.utils.data.Dataset):
+            def __init__(self, images, labels, predicted_labels):
+                self.images = images
+                self.labels = labels
+                self.predicted_labels = predicted_labels
+                self.indices = sorted(range(len(predicted_labels)), key=lambda k: predicted_labels[k])
 
-    # Process images class by class based on classifier predictions
-    for pred_label in self.present_label:
-        # Get indices of images classified as this label
-        indices = np.where(predicted_labels == pred_label)[0]
-        
-        if len(indices) == 0:
-            continue  # Skip if no images were classified as this label
+            def __len__(self):
+                return len(self.images)
 
-        # Get the corresponding images
-        class_images = torch.stack([all_images[i] for i in indices])
-        class_loader = DataLoader(class_images, batch_size=self.batch_size)
+            def __getitem__(self, idx):
+                return self.images[self.indices[idx]], self.labels[self.indices[idx]]
 
-        netI = self.models[pred_label]['I']
-        T_train = self.T_trains[pred_label]
-        em_len = len(T_train)
+        ordered_dataset = OrderedDataset(all_images, all_labels, predicted_labels)
+        test_loader = DataLoader(ordered_dataset, batch_size=self.batch_size, shuffle=False)
 
-        fake_Ts = []
-        p_vals = []
+        for label in self.present_label:
+            T_train = self.T_trains[label]
+            em_len = len(T_train)
+            
+            # Use the preloaded "I" model from self.models
+            netI = self.models[label]['I']
 
-        for batch in class_loader:
-            x = batch.to(self.device)
-            fake_z = netI(x)
-            T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
-            p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
+            fake_Ts = {lab: [] for lab in self.all_label}
+            p_vals = {lab: [] for lab in self.all_label}
 
-            fake_Ts.extend(T_batch.cpu().numpy())
-            p_vals.extend(p.cpu().numpy())
+            for batch in test_loader:
+                images, y = batch
+                x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
+                fake_z = netI(x)
+                T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
+                
+                p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
 
-        # Store results using true labels
-        for i, idx in enumerate(indices):
-            true_label = true_labels[idx]
-            all_fake_Ts[true_label].append(fake_Ts[i])
-            all_p_vals[true_label].append(p_vals[i])
+                # Store results for each true label
+                for true_label in self.all_label:
+                    mask = (y == true_label)
+                    if mask.any():
+                        fake_Ts[true_label].extend(T_batch[mask].cpu().tolist())
+                        p_vals[true_label].extend(p[mask].cpu().tolist())
 
-    # Convert lists to numpy arrays
-    for true_label in self.all_label:
-        all_fake_Ts[true_label] = np.array(all_fake_Ts[true_label])
-        all_p_vals[true_label] = np.array(all_p_vals[true_label])
+            # Convert lists to numpy arrays and store in the main dictionaries
+            for true_label in self.all_label:
+                all_fake_Ts[true_label][label] = np.array(fake_Ts[true_label])
+                all_p_vals[true_label][label] = np.array(p_vals[true_label])
 
-    # Visualize the results
-    self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
-    self.visualize_p(all_p_vals, classes=self.test_gen.classes)
+        # Visualize the results
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes)
 
-    print('Finish validation with classifier.')
+        print('Finish validation with classifier.')
     
     def visualize_T_trains(self):
         """Visualize the distribution of T_trains for all labels in a single row."""

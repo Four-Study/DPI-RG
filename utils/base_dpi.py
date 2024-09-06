@@ -41,6 +41,14 @@ class BaseDPI:
         self.optimizers = {}
         self.T_train = None
         
+        # Save folder paths as instance variables
+        self.graphs_folder = f'graphs_{dataset_name}'
+        self.params_folder = f'params_{dataset_name}'
+
+        # Create the folders for saving plots
+        os.makedirs(self.graphs_folder, exist_ok=True)
+        os.makedirs(self.params_folder, exist_ok=True)
+        
         # Set timestamp and mode
         if timestamp is None:
             self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M")
@@ -54,13 +62,7 @@ class BaseDPI:
         # Initialize or load models
         self.setup_models()
 
-        # Save folder paths as instance variables
-        self.graphs_folder = f'graphs_{dataset_name}'
-        self.params_folder = f'params_{dataset_name}'
 
-        # Create the folders for saving plots
-        os.makedirs(self.graphs_folder, exist_ok=True)
-        os.makedirs(self.params_folder, exist_ok=True)
 
     def setup_models(self):
         # This method should be implemented in child classes
