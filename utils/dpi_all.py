@@ -134,7 +134,7 @@ class DPI_ALL(BaseDPI):
         for epoch in range(1, self.epochs + 1):
             if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
                 print(f'Epoch = {epoch}')
-                self.display_fake_images(netG)
+                self.display_fake_images(netG, epoch)
 
             data = iter(train_loader)
             
@@ -335,13 +335,13 @@ class DPI_ALL(BaseDPI):
         fixed_noise += add * self.eta
         return fixed_noise
 
-    def display_fake_images(self, netG):
+    def display_fake_images(self, netG, epoch):
         nclass = len(self.present_label)
         with torch.no_grad():
             fake = netG(self.fixed_noise.view(4 * nclass, self.z_dim)).view(-1, 1, 28, 28)
         
         plt.figure(figsize=(nclass, 4))
         plt.axis("off")
-        plt.title("Fake Images")
+        plt.title(f'Fake Images for Epoch {epoch}')
         plt.imshow(np.transpose(vutils.make_grid(fake.cpu(), nrow=nclass, padding=2, normalize=True), (1, 2, 0)))
         plt.show()
