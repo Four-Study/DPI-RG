@@ -219,3 +219,22 @@ class f_MNIST(nn.Module):
         input = torch.cat([torch.pow(input, i) for i in powers], dim=1)
         output = self.main(input)
         return output.squeeze(1)
+    
+class D_MNIST(nn.Module):
+    def __init__(self):
+        super(D_MNIST, self).__init__()
+        self.conv1 = nn.Conv2d(1, 64, kernel_size=4, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1)
+        self.fc1 = nn.Linear(128 * 7 * 7, 1)
+        self.dropout = nn.Dropout(0.3)
+        self.bn1 = nn.BatchNorm2d(128)
+
+    def forward(self, x):
+        x = x.view(-1, 1, 28, 28)
+        x = F.leaky_relu(self.conv1(x), 0.2)
+        x = self.dropout(x)
+        x = F.leaky_relu(self.bn1(self.conv2(x)), 0.2)
+        x = self.dropout(x)
+        x = x.view(-1, 128 * 7 * 7)
+        x = torch.sigmoid(self.fc1(x))
+        return x
