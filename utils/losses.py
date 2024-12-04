@@ -13,14 +13,14 @@ import torch.optim as optim
 def get_device(tensor):
     return tensor.device
 
-# loss function for D update:
-def D_loss(netI, netG, netD, z, fake_z):
+# loss function for f update:
+def f_loss(netI, netG, netf, z, fake_z):
     post_z = netI(netG(z))
-    losses = netD(fake_z) - netD(post_z)
+    losses = netf(fake_z) - netf(post_z)
     return losses.mean()
 
 # loss function for G and I update:
-def GI_loss(netI, netG, netD, z, fake_z, p=2):
+def GI_loss(netI, netG, netf, z, fake_z, p=2):
     post_z = netI(netG(z))
     n_dim = len(post_z.shape)
     dim = list(range(1, n_dim))
@@ -28,7 +28,7 @@ def GI_loss(netI, netG, netD, z, fake_z, p=2):
     # sz = 1
     l2 = torch.sqrt(torch.sum((z-post_z)**2, dim=dim))
     # sz = real_data.shape[0]
-    losses = l2 + netD(post_z) - netD(fake_z)
+    losses = l2 + netf(post_z) - netf(fake_z)
     return losses.mean()
 
 # reconstruction for z
@@ -40,7 +40,7 @@ def rec_z(netG, netI, z):
     return l2.mean()
 
 # primal loss function
-def primal(netI, netG, netD, z, p=2):
+def primal(netI, netG, netf, z, p=2):
     post_z = netI(netG(z))
     n_dim = len(post_z.shape)
     dim = list(range(1, n_dim))
@@ -49,8 +49,8 @@ def primal(netI, netG, netD, z, p=2):
 
 
 # dual loss function
-def dual(netI, netG, netD, z, fake_z):
-    losses = netD(z) - netD(fake_z)
+def dual(netI, netG, netf, z, fake_z):
+    losses = netf(z) - netf(fake_z)
     return losses.mean()
 
 # *** Penalty Terms ***
@@ -70,28 +70,28 @@ def _gradient_penalty(x, y, f):
     gp = ((g.norm(p=2, dim=1) - 1)**2).mean()
     return gp
 
-# gradient penalty for netD
-def gradient_penalty_D(x, z, netD, netG, netI):
+# gradient penalty for netf
+def gradient_penalty_f(x, z, netf, netG, netI):
     x_hat = netG(z)
     x_tilde = netG(netI(x))
-    return _gradient_penalty(x_hat, x_tilde, netD)
+    return _gradient_penalty(x_hat, x_tilde, netf)
 
 # gradient penalty for f(G(.))
 
-def gradient_penalty_DG(x, z, netD, netG, netI):
+def gradient_penalty_fG(x, z, netf, netG, netI):
     def _g(x):
-        return netD(netG(x))
+        return netf(netG(x))
     z_hat = netI(x)
     return _gradient_penalty(z_hat, z, _g)
 
 # gradient penalty for dual
-def gradient_penalty_dual(x, z, netD, netG, netI):
+def gradient_penalty_dual(x, z, netf, netG, netI):
     # x_hat = netG(z)
     z_hat = netI(x)
-    return _gradient_penalty(z_hat, z, netD)
+    return _gradient_penalty(z_hat, z, netf)
 
 # Penalty for z and I(x)
-def z_Qx(x, z, netD, netG, netI):
+def z_Qx(x, z, netf, netG, netI):
     return ((z - netI(x)).norm(p=2, dim=1)**2).mean()
 
 # *** MMD penalty ***

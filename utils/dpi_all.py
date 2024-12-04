@@ -26,7 +26,7 @@ class DPI_ALL(BaseDPI):
             self.load_inverse_model()  # Load single "I" model for validation
         else:
             print("Setting up new models.")
-            self.initialize_model()  # Initialize single set of "I", "G", "D" for training
+            self.initialize_model()  # Initialize single set of "I", "G", "f" for training
 
     def initialize_model(self):
         """Initialize a single set of 'I', 'G', 'f' models for training."""
@@ -39,7 +39,7 @@ class DPI_ALL(BaseDPI):
         self.optimizers = {
             'I': optim.Adam(netI.parameters(), lr=self.lr_I, betas=(0.5, 0.999)),
             'G': optim.Adam(netG.parameters(), lr=self.lr_G, betas=(0.5, 0.999)),
-            'f': optim.Adam(netf.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
+            'f': optim.Adam(netf.parameters(), lr=self.lr_f, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
     def load_inverse_model(self):
@@ -72,14 +72,14 @@ class DPI_ALL(BaseDPI):
         optim_I, optim_G, optim_f = self.optimizers['I'], self.optimizers['G'], self.optimizers['f']
         
         # Initialize lists to store losses
-        GI_losses, MMD_losses, D_losses, GP_losses = [], [], [], []
+        GI_losses, MMf_losses, f_losses, GP_losses = [], [], [], []
 
         self.train_epoch(
             netI, netG, netf, optim_I, optim_G, optim_f,
             train_loader, 
             sample_sizes=None, 
-            GI_losses=GI_losses, MMD_losses=MMD_losses,
-            D_losses=D_losses, GP_losses=GP_losses
+            GI_losses=GI_losses, MMf_losses=MMf_losses,
+            f_losses=f_losses, GP_losses=GP_losses
         )
 
         # Save the trained model
@@ -93,7 +93,7 @@ class DPI_ALL(BaseDPI):
         self.T_train = T_train
 
         # Save the loss plots to the graphs folder
-        self.save_loss_plots(GI_losses, MMD_losses, D_losses, GP_losses)
+        self.save_loss_plots(GI_losses, MMf_losses, f_losses, GP_losses)
 
         # Visualize T_trains distribution after training
         self.visualize_T_train()
@@ -109,8 +109,8 @@ class DPI_ALL(BaseDPI):
         print(f"{'-'*50}")
 
     def train_epoch(self, netI, netG, netf, optim_I, optim_G, optim_f, train_loader, 
-            sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
-                D_losses=[], GP_losses=[]):
+            sample_sizes=None, sampled_idxs=None, GI_losses=[], MMf_losses=[],
+                f_losses=[], GP_losses=[]):
 
         if sampled_idxs is None:
             sampled_idxs = {}
@@ -128,7 +128,7 @@ class DPI_ALL(BaseDPI):
         if isinstance(self.decay_epochs, int):
             scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=self.gamma)
             scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=self.gamma)
-            scheduler_D = StepLR(optim_f, step_size=self.decay_epochs, gamma=self.gamma)
+            scheduler_f = StepLR(optim_f, step_size=self.decay_epochs, gamma=self.gamma)
 
         # Training started
         for epoch in range(1, self.epochs + 1):
@@ -168,9 +168,9 @@ class DPI_ALL(BaseDPI):
                 optim_G.step()
 
             GI_losses.append(cost_GI.cpu().item())
-            MMD_losses.append(self.lambda_mmd * mmd.cpu().item())
+            MMf_losses.append(self.lambda_mmd * mmd.cpu().item())
             
-            # 2. Update D network
+            # 2. Update f network
             for p in netf.parameters():
                 p.requires_grad = True
             for p in netI.parameters():
@@ -178,30 +178,30 @@ class DPI_ALL(BaseDPI):
             for p in netG.parameters():
                 p.requires_grad = False
                 
-            for _ in range(self.critic_iter_d):
+            for _ in range(self.critic_iter_f):
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
                 netf.zero_grad()
-                cost_D = D_loss(netI, netG, netf, z, fake_z)
+                cost_f = f_loss(netI, netG, netf, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
-                gp_D = gradient_penalty_dual(x.data, z.data, netf, netG, netI)
-                dual_cost = cost_D + self.lambda_gp * gp_D
+                gp_f = gradient_penalty_dual(x.data, z.data, netf, netG, netI)
+                dual_cost = cost_f + self.lambda_gp * gp_f
                 dual_cost.backward()
                 optim_f.step()
                 
-            D_losses.append(cost_D.cpu().item())
-            GP_losses.append(self.lambda_gp * gp_D.cpu().item())
+            f_losses.append(cost_f.cpu().item())
+            GP_losses.append(self.lambda_gp * gp_f.cpu().item())
             
             if isinstance(self.decay_epochs, int):
                 scheduler_I.step()
                 scheduler_G.step()
-                scheduler_D.step()
+                scheduler_f.step()
 
     def get_fake_zs(self, train_loader):
         netI = self.models['I']
@@ -300,7 +300,7 @@ class DPI_ALL(BaseDPI):
         plt.savefig(f'{self.graphs_folder}/{self.timestamp}_T_train.png')
         plt.close()
 
-    def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
+    def save_loss_plots(self, GI_losses, MMf_losses, f_losses, GP_losses):
         """Save the losses for the training process to the graphs folder."""
 
         plt.figure(figsize=(10, 6))
@@ -308,11 +308,11 @@ class DPI_ALL(BaseDPI):
         # Plot with high contrast colors and different line styles without markers
         epochs = range(1, len(GI_losses) + 1)
         plt.plot(epochs, GI_losses, label='GI Loss', color='black', linestyle='-')    # Black, solid line
-        plt.plot(epochs, MMD_losses, label='MMD Loss', color='blue', linestyle='--')  # Blue, dashed line
-        plt.plot(epochs, D_losses, label='D Loss', color='green', linestyle='-.')     # Green, dash-dot line
+        plt.plot(epochs, MMf_losses, label='MMD loss', color='blue', linestyle='--')  # Blue, dashed line
+        plt.plot(epochs, f_losses, label='f loss', color='green', linestyle='-.')     # Green, dash-dot line
 
         # Combine all losses into one array
-        all_losses = np.concatenate([GI_losses, MMD_losses, D_losses, GP_losses])
+        all_losses = np.concatenate([GI_losses, MMf_losses, f_losses, GP_losses])
         # Calculate the upper quantile 
         uq = np.percentile(all_losses, 99.5)
         min_loss = np.min(all_losses)

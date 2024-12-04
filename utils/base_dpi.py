@@ -9,9 +9,9 @@ import torch.nn as nn
 from .dataloader import get_dataset
 
 class BaseDPI:
-    def __init__(self, dataset_name, lr_G, lr_I, lr_D, weight_decay, batch_size, 
+    def __init__(self, dataset_name, lr_G, lr_I, lr_f, weight_decay, batch_size, 
                  lambda_mmd, lambda_gp, eta, std, present_label, missing_label=[], 
-                 img_size=28, nc=1, critic_iter=3, critic_iter_d=3, decay_epochs=None, 
+                 img_size=28, nc=1, critic_iter=3, critic_iter_f=3, decay_epochs=None, 
                  gamma=0.2, device=None, timestamp=None):
         # Common initialization code
         self.dataset_name = dataset_name
@@ -19,7 +19,7 @@ class BaseDPI:
         self.test_gen = get_dataset(dataset_name, train=False)
         self.lr_I = lr_I
         self.lr_G = lr_G
-        self.lr_D = lr_D
+        self.lr_f = lr_f
         self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.lambda_mmd = lambda_mmd
@@ -29,7 +29,7 @@ class BaseDPI:
         self.img_size = img_size
         self.nc = nc
         self.critic_iter = critic_iter
-        self.critic_iter_d = critic_iter_d
+        self.critic_iter_f = critic_iter_f
         self.decay_epochs = decay_epochs
         self.gamma = gamma
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -88,7 +88,7 @@ class BaseDPI:
         # Common logic for getting fake zs
         raise NotImplementedError("Subclass must implement abstract method")
     
-    def save_loss_plots(self, GI_losses, MMD_losses, D_losses, GP_losses):
+    def save_loss_plots(self, GI_losses, MMD_losses, f_losses, GP_losses):
         # Common logic for saving loss plots
         raise NotImplementedError("Subclass must implement abstract method")
 
