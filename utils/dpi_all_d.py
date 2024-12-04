@@ -172,7 +172,7 @@ class DPI_ALL(BaseDPI):
                 fake_x = netG(z)
                 mmd = mmd_penalty(fake_z, z, kernel="RBF")
                 # primal_cost = cost_GI + self.lambda_mmd * mmd
-                loss_D = netD(fake_x).mean()
+                loss_D = -torch.mean(torch.log(netD(fake_x)))
                 primal_cost = cost_GI + self.lambda_d * loss_D
                 primal_cost.backward()
                 optim_I.step()
@@ -201,7 +201,7 @@ class DPI_ALL(BaseDPI):
                 netf.zero_grad()
                 netD.zero_grad()
                 cost_f = f_loss(netI, netG, netf, z, fake_z)
-                loss_D = -netD(fake_x).mean()
+                loss_D = -torch.mean(torch.log(1-netD(fake_x)))-torch.mean(torch.log(netD(x)))
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
