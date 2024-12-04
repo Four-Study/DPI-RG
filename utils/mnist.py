@@ -158,9 +158,9 @@ class G_MNIST(nn.Module):
         return output.view(-1, 28*28)
 
     
-# class D_MNIST(nn.Module):
+# class f_MNIST(nn.Module):
 #     def __init__(self, nz, ndf = 32):
-#         super(D_MNIST, self).__init__()
+#         super(f_MNIST, self).__init__()
 #         layers = [
 #             # input is (nz) 
 #             # state size. (ndf * 4) 
@@ -187,9 +187,9 @@ class G_MNIST(nn.Module):
 #         output = self.main(powers)
 #         return output.squeeze(1)
     
-class D_MNIST(nn.Module):
+class f_MNIST(nn.Module):
     def __init__(self, nz, ndf = 16, power = 6):
-        super(D_MNIST, self).__init__()
+        super(f_MNIST, self).__init__()
         self.power = power
         layers = [
             # input is (nz) 

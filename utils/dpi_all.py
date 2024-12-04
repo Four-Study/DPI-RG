@@ -7,7 +7,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from .base_dpi import BaseDPI
 from .losses import *
-from .mnist import I_MNIST, G_MNIST, D_MNIST
+from .mnist import I_MNIST, G_MNIST, f_MNIST
 from .dataloader import get_data_loader
 
 
@@ -29,17 +29,17 @@ class DPI_ALL(BaseDPI):
             self.initialize_model()  # Initialize single set of "I", "G", "D" for training
 
     def initialize_model(self):
-        """Initialize a single set of 'I', 'G', 'D' models for training."""
+        """Initialize a single set of 'I', 'G', 'f' models for training."""
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netG = G_MNIST(nz=self.z_dim).to(self.device)
-        netD = D_MNIST(nz=self.z_dim).to(self.device)
-        netI, netG, netD = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netD)
+        netf = f_MNIST(nz=self.z_dim).to(self.device)
+        netI, netG, netf = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netf)
 
-        self.models = {'I': netI, 'G': netG, 'D': netD}
+        self.models = {'I': netI, 'G': netG, 'f': netf}
         self.optimizers = {
             'I': optim.Adam(netI.parameters(), lr=self.lr_I, betas=(0.5, 0.999)),
             'G': optim.Adam(netG.parameters(), lr=self.lr_G, betas=(0.5, 0.999)),
-            'D': optim.Adam(netD.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
+            'f': optim.Adam(netf.parameters(), lr=self.lr_D, betas=(0.5, 0.999), weight_decay=self.weight_decay)
         }
 
     def load_inverse_model(self):
@@ -68,14 +68,14 @@ class DPI_ALL(BaseDPI):
         train_loader = get_data_loader(self.train_gen, self.present_label, self.batch_size)
 
         # Retrieve models and optimizers
-        netI, netG, netD = self.models['I'], self.models['G'], self.models['D']
-        optim_I, optim_G, optim_D = self.optimizers['I'], self.optimizers['G'], self.optimizers['D']
+        netI, netG, netf = self.models['I'], self.models['G'], self.models['f']
+        optim_I, optim_G, optim_f = self.optimizers['I'], self.optimizers['G'], self.optimizers['f']
         
         # Initialize lists to store losses
         GI_losses, MMD_losses, D_losses, GP_losses = [], [], [], []
 
         self.train_epoch(
-            netI, netG, netD, optim_I, optim_G, optim_D,
+            netI, netG, netf, optim_I, optim_G, optim_f,
             train_loader, 
             sample_sizes=None, 
             GI_losses=GI_losses, MMD_losses=MMD_losses,
@@ -108,7 +108,7 @@ class DPI_ALL(BaseDPI):
         print(f"Total training time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
         print(f"{'-'*50}")
 
-    def train_epoch(self, netI, netG, netD, optim_I, optim_G, optim_D, train_loader, 
+    def train_epoch(self, netI, netG, netf, optim_I, optim_G, optim_f, train_loader, 
             sample_sizes=None, sampled_idxs=None, GI_losses=[], MMD_losses=[],
                 D_losses=[], GP_losses=[]):
 
@@ -128,18 +128,18 @@ class DPI_ALL(BaseDPI):
         if isinstance(self.decay_epochs, int):
             scheduler_I = StepLR(optim_I, step_size=self.decay_epochs, gamma=self.gamma)
             scheduler_G = StepLR(optim_G, step_size=self.decay_epochs, gamma=self.gamma)
-            scheduler_D = StepLR(optim_D, step_size=self.decay_epochs, gamma=self.gamma)
+            scheduler_D = StepLR(optim_f, step_size=self.decay_epochs, gamma=self.gamma)
 
-        # Training for this label started
+        # Training started
         for epoch in range(1, self.epochs + 1):
-            if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs:
+            if (epoch - 1) % max(self.epochs // 4, 1) == 0 or epoch == self.epochs: # 4 means display the images 4 times
                 print(f'Epoch = {epoch}')
                 self.display_fake_images(netG, epoch)
 
             data = iter(train_loader)
             
             # 1. Update G, I network
-            for p in netD.parameters():
+            for p in netf.parameters():
                 p.requires_grad = False
             for p in netI.parameters():
                 p.requires_grad = True
@@ -155,7 +155,7 @@ class DPI_ALL(BaseDPI):
                 # fake_x = netG(z)
                 netI.zero_grad()
                 netG.zero_grad()
-                cost_GI = GI_loss(netI, netG, netD, z, fake_z)
+                cost_GI = GI_loss(netI, netG, netf, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
@@ -171,7 +171,7 @@ class DPI_ALL(BaseDPI):
             MMD_losses.append(self.lambda_mmd * mmd.cpu().item())
             
             # 2. Update D network
-            for p in netD.parameters():
+            for p in netf.parameters():
                 p.requires_grad = True
             for p in netI.parameters():
                 p.requires_grad = False
@@ -184,16 +184,16 @@ class DPI_ALL(BaseDPI):
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
                 fake_z = netI(x)
-                netD.zero_grad()
-                cost_D = D_loss(netI, netG, netD, z, fake_z)
+                netf.zero_grad()
+                cost_D = D_loss(netI, netG, netf, z, fake_z)
                 images, y = self.next_batch(data, train_loader)
                 x = images.view(len(images), self.nc * self.img_size ** 2).to(self.device)
                 y_one_hot = F.one_hot(y, num_classes=len(self.present_label)).float().to(self.device) * self.eta
                 z = torch.randn(len(images), self.z_dim, device=self.device) * self.std + y_one_hot
-                gp_D = gradient_penalty_dual(x.data, z.data, netD, netG, netI)
+                gp_D = gradient_penalty_dual(x.data, z.data, netf, netG, netI)
                 dual_cost = cost_D + self.lambda_gp * gp_D
                 dual_cost.backward()
-                optim_D.step()
+                optim_f.step()
                 
             D_losses.append(cost_D.cpu().item())
             GP_losses.append(self.lambda_gp * gp_D.cpu().item())
