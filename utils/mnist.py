@@ -238,3 +238,33 @@ class D_MNIST(nn.Module):
         x = x.view(-1, 128 * 7 * 7)
         x = torch.sigmoid(self.fc1(x))
         return x
+    
+
+class CustomAlexNet(nn.Module):
+    def __init__(self, num_classes):
+        super(CustomAlexNet, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),  # Change input channels to 1
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: 32 x 14 x 14
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: 64 x 7 x 7
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # Output: 128 x 3 x 3
+        )
+        self.classifier = nn.Sequential(
+            nn.Dropout(),
+            nn.Linear(128 * 3 * 3, 256),  # Adjust input size based on the output of the feature extractor
+            nn.ReLU(inplace=True),
+            nn.Dropout(),
+            nn.Linear(256, num_classes),
+        )
+
+    def forward(self, x):
+        x = x.view(-1, 1, 28, 28)
+        x = self.features(x)
+        x = x.view(x.size(0), -1)  # Flatten the output
+        x = self.classifier(x)
+        return x

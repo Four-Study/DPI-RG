@@ -516,15 +516,15 @@ class DPI_CLASS(BaseDPI):
         plt.close()
 
     def generate_fixed_noise(self):
-        fixed_noise = torch.randn(2 * 10, self.z_dim, device=self.device) * self.std
+        fixed_noise = torch.randn(2 * 5, self.z_dim, device=self.device) * self.std
         return fixed_noise
 
     def display_fake_images(self, netG):
         with torch.no_grad():
-            fake = netG(self.fixed_noise.view(2 * 10, self.z_dim)).view(-1, 1, 28, 28)
+            fake = netG(self.fixed_noise.view(2 * 5, self.z_dim)).view(-1, 1, 28, 28)
         
-        plt.figure(figsize=(10, 2))
+        plt.figure(figsize=(5, 2))
         plt.axis("off")
         plt.title("Fake Images")
-        plt.imshow(np.transpose(vutils.make_grid(fake.cpu(), nrow=10, padding=2, normalize=True), (1, 2, 0)))
+        plt.imshow(np.transpose(vutils.make_grid(fake.cpu(), nrow=5, padding=2, normalize=True), (1, 2, 0)))
         plt.show()
