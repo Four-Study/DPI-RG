@@ -40,7 +40,8 @@ class I_MNIST(nn.Module):
     def __init__(self, nz=5):
         super(I_MNIST, self).__init__()
         # Load pre-trained ResNet18
-        self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        self.resnet = models.resnet18()
         
         # Modify the first convolutional layer to accept 1 channel input
         self.resnet.conv1 = nn.Conv2d(1, self.resnet.conv1.out_channels, kernel_size=3, stride=1, padding=1, bias=False)
