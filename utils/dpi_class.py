@@ -167,7 +167,7 @@ class DPI_CLASS(BaseDPI):
         for epoch in range(start_epoch + 1, end_epoch + 1):
             if (epoch - 1) % max(self.epochs2 // 4, 1) == 0 or epoch == self.epochs2:
                 print(f'Epoch = {epoch}')
-                self.display_fake_images(netG)
+                # self.display_fake_images(netG)
 
             data = iter(train_loader)
             
