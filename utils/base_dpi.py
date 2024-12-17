@@ -228,7 +228,7 @@ def save_parameters(obj, file_path):
         file_path: The path to save the parameters.
     """
     # Define the list of parameters to save
-    selected_params = {
+    params = {
         "lr_I": obj.lr_I,
         "lr_G": obj.lr_G,
         "lr_f": obj.lr_f,
@@ -253,4 +253,4 @@ def save_parameters(obj, file_path):
     
     # Save the selected parameters to a JSON file
     with open(f'{obj.params_folder}/{obj.timestamp}.json', 'w') as file:
-        json.dump(selected_params, file, indent=4)
+        json.dump(params, file, indent=4)
