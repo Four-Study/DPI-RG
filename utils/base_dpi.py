@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 
 import os
+import json
 import torch
 import torch.nn as nn
 from .dataloader import get_dataset
@@ -217,3 +218,39 @@ class BaseDPI:
         fig.tight_layout()
         fig.savefig(f'{self.graphs_folder}/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)
+
+def save_parameters(obj, file_path):
+    """
+    Save explicitly selected parameters of an object to a file.
+
+    Parameters:
+        obj: The object containing the parameters.
+        file_path: The path to save the parameters.
+    """
+    # Define the list of parameters to save
+    selected_params = {
+        "lr_I": obj.lr_I,
+        "lr_G": obj.lr_G,
+        "lr_f": obj.lr_f,
+        "weight_decay": obj.weight_decay,
+        "batch_size": obj.batch_size,
+        "lambda_mmd": obj.lambda_mmd,
+        "lambda_gp": obj.lambda_gp,
+        "eta": obj.eta,
+        "std": obj.std,
+        "img_size": obj.img_size,
+        "nc": obj.nc,
+        "critic_iter": obj.critic_iter,
+        "critic_iter_f": obj.critic_iter_f,
+        "decay_epochs": obj.decay_epochs,
+        "gamma": obj.gamma,
+        "device": str(obj.device),  # Convert device to string
+        "present_label": obj.present_label,
+        "missing_label": obj.missing_label,
+        "all_label": obj.all_label,
+        "z_dim": obj.z_dim
+    }
+    
+    # Save the selected parameters to a JSON file
+    with open(f'{obj.params_folder}/{obj.timestamp}.json', 'w') as file:
+        json.dump(selected_params, file, indent=4)
