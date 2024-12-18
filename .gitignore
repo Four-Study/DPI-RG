@@ -8,5 +8,6 @@ _utils/*
 *.pdf
 *.log
 *.ipynb
+*.json
 models/*
 utils/tools.py

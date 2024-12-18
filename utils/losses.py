@@ -190,12 +190,14 @@ class ModifiedHuberLoss(nn.Module):
         Returns:
         torch.Tensor: The calculated loss.
         """
-        error = output - target
-        error_neg = output + target
-        min_error = torch.minimum(torch.abs(error), torch.abs(error_neg))
-        is_small_error = min_error < self.delta
-        quadratic = 0.5 * min_error**2
-        linear = self.delta * (min_error - 0.5 * self.delta)
+        error1 = output - target
+        error2 = output + target
+        error = error1 if torch.sum(torch.abs(error1)) < torch.sum(torch.abs(error2)) else error2
+        is_small_error = error < self.delta
+        # error = torch.minimum(torch.abs(error1), torch.abs(error2))
+        # is_small_error = error < self.delta
+        quadratic = 0.5 * error**2
+        linear = self.delta * (error - 0.5 * self.delta)
         return torch.where(is_small_error, quadratic, linear).mean()
 
 # I_loss = nn.MSELoss()

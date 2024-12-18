@@ -60,6 +60,9 @@ class BaseDPI:
         
         print(f"Current timestamp: {self.timestamp}")
 
+        # Save the parameters
+        self.save_parameters()
+
         # Initialize or load models
         self.setup_models()
 
@@ -100,6 +103,38 @@ class BaseDPI:
     def display_fake_images(self, netG):
         # Common logic for saving loss plots
         raise NotImplementedError("Subclass must implement abstract method")
+    
+    def save_parameters(self):
+        """
+        Save explicitly selected parameters of the instance to a file.
+        """
+        # Define the list of parameters to save
+        params = {
+            "lr_I": self.lr_I,
+            "lr_G": self.lr_G,
+            "lr_f": self.lr_f,
+            "weight_decay": self.weight_decay,
+            "batch_size": self.batch_size,
+            "lambda_mmd": self.lambda_mmd,
+            "lambda_gp": self.lambda_gp,
+            "eta": self.eta,
+            "std": self.std,
+            "img_size": self.img_size,
+            "nc": self.nc,
+            "critic_iter": self.critic_iter,
+            "critic_iter_f": self.critic_iter_f,
+            "decay_epochs": self.decay_epochs,
+            "gamma": self.gamma,
+            "device": str(self.device),  # Convert device to string
+            "present_label": self.present_label,
+            "missing_label": self.missing_label,
+            "all_label": self.all_label,
+            "z_dim": self.z_dim
+        }
+        
+        # Save the selected parameters to a JSON file
+        with open(f'{self.params_folder}/{self.timestamp}.json', 'w') as file:
+            json.dump(params, file, indent=4)
     
     @staticmethod
     def next_batch(data_iter, train_loader):
@@ -219,38 +254,3 @@ class BaseDPI:
         fig.savefig(f'{self.graphs_folder}/{self.timestamp}_fake_T.png', dpi=150)
         plt.close(fig)
 
-def save_parameters(obj, file_path):
-    """
-    Save explicitly selected parameters of an object to a file.
-
-    Parameters:
-        obj: The object containing the parameters.
-        file_path: The path to save the parameters.
-    """
-    # Define the list of parameters to save
-    params = {
-        "lr_I": obj.lr_I,
-        "lr_G": obj.lr_G,
-        "lr_f": obj.lr_f,
-        "weight_decay": obj.weight_decay,
-        "batch_size": obj.batch_size,
-        "lambda_mmd": obj.lambda_mmd,
-        "lambda_gp": obj.lambda_gp,
-        "eta": obj.eta,
-        "std": obj.std,
-        "img_size": obj.img_size,
-        "nc": obj.nc,
-        "critic_iter": obj.critic_iter,
-        "critic_iter_f": obj.critic_iter_f,
-        "decay_epochs": obj.decay_epochs,
-        "gamma": obj.gamma,
-        "device": str(obj.device),  # Convert device to string
-        "present_label": obj.present_label,
-        "missing_label": obj.missing_label,
-        "all_label": obj.all_label,
-        "z_dim": obj.z_dim
-    }
-    
-    # Save the selected parameters to a JSON file
-    with open(f'{obj.params_folder}/{obj.timestamp}.json', 'w') as file:
-        json.dump(params, file, indent=4)
