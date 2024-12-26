@@ -106,35 +106,25 @@ class BaseDPI:
     
     def save_parameters(self):
         """
-        Save explicitly selected parameters of the instance to a file.
+        Save all parameters of the instance to a file, skipping non-serializable parameters.
         """
-        # Define the list of parameters to save
-        params = {
-            "lr_I": self.lr_I,
-            "lr_G": self.lr_G,
-            "lr_f": self.lr_f,
-            "weight_decay": self.weight_decay,
-            "batch_size": self.batch_size,
-            "lambda_mmd": self.lambda_mmd,
-            "lambda_gp": self.lambda_gp,
-            "eta": self.eta,
-            "std": self.std,
-            "img_size": self.img_size,
-            "nc": self.nc,
-            "critic_iter": self.critic_iter,
-            "critic_iter_f": self.critic_iter_f,
-            "decay_epochs": self.decay_epochs,
-            "gamma": self.gamma,
-            "device": str(self.device),  # Convert device to string
-            "present_label": self.present_label,
-            "missing_label": self.missing_label,
-            "all_label": self.all_label,
-            "z_dim": self.z_dim
-        }
-        
+        params = {}
+        for key, value in self.__dict__.items():
+            if not key.startswith('_'):
+                try:
+                    # Try to serialize the value
+                    json.dumps(value)
+                    params[key] = value
+                except (TypeError, ValueError):
+                    # Skip non-serializable parameters silently
+                    continue
+
+        # Sort parameters by name
+        sorted_params = dict(sorted(params.items()))
+
         # Save the selected parameters to a JSON file
         with open(f'{self.params_folder}/{self.timestamp}.json', 'w') as file:
-            json.dump(params, file, indent=4)
+            json.dump(sorted_params, file, indent=4)
     
     @staticmethod
     def next_batch(data_iter, train_loader):
