@@ -455,8 +455,8 @@ class DPI_CLASS(BaseDPI):
                 all_p_vals[true_label][label] = np.array(p_vals[true_label])
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T.png')
-        self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T_2.png')
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power_2.png')
 
         print('Finish validation with classifier.')
     
