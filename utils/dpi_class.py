@@ -49,7 +49,7 @@ class DPI_CLASS(BaseDPI):
 
     def load_inverse_model(self, label):
         """Load the pre-trained 'I' model for validation."""
-        model_save_file = f'{self.params_folder}/{self.timestamp}_class{label}.pt'
+        model_save_file = f'{self.params_folder}/class{label}.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
@@ -304,7 +304,7 @@ class DPI_CLASS(BaseDPI):
         return sample_sizes
 
     def save_model(self, label):
-        model_save_file = f'{self.params_folder}/{self.timestamp}_class{label}.pt'
+        model_save_file = f'{self.params_folder}/class{label}.pt'
         torch.save(self.models[label]['I'].state_dict(), model_save_file)
 
     def validate(self):
@@ -361,8 +361,8 @@ class DPI_CLASS(BaseDPI):
                 all_p_vals[true_label][label] = np.array(p_vals[true_label])
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
-        self.visualize_p(all_p_vals, classes=self.test_gen.classes)
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T.png')
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
 
         print('Finish validation.')
 
@@ -455,8 +455,8 @@ class DPI_CLASS(BaseDPI):
                 all_p_vals[true_label][label] = np.array(p_vals[true_label])
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes)
-        self.visualize_p(all_p_vals, classes=self.test_gen.classes)
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T.png')
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
 
         print('Finish validation with classifier.')
     
@@ -479,7 +479,7 @@ class DPI_CLASS(BaseDPI):
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust layout to accommodate suptitle
         
         # Save the plot
-        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_T_trains.png')
+        plt.savefig(f'{self.graphs_folder}/T_trains.png')
         plt.close()
 
     def save_loss_plots(self, label, GI_losses, MMD_losses, f_losses, GP_losses, Power_losses):
@@ -512,7 +512,7 @@ class DPI_CLASS(BaseDPI):
         plt.legend()
         
         # Save the plot instead of showing it
-        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses_class{label}.png')
+        plt.savefig(f'{self.graphs_folder}/losses_class{label}.png')
         plt.close()
 
     def generate_fixed_noise(self):

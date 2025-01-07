@@ -42,14 +42,6 @@ class BaseDPI:
         self.optimizers = {}
         self.T_train = None
         
-        # Save folder paths as instance variables
-        self.graphs_folder = f'graphs_{dataset_name}'
-        self.params_folder = f'params_{dataset_name}'
-
-        # Create the folders for saving plots
-        os.makedirs(self.graphs_folder, exist_ok=True)
-        os.makedirs(self.params_folder, exist_ok=True)
-        
         # Set timestamp and mode
         if timestamp is None:
             self.timestamp = datetime.now().strftime("%Y_%m_%d_%H%M")
@@ -59,6 +51,14 @@ class BaseDPI:
             self.validation_only = True
         
         print(f"Current timestamp: {self.timestamp}")
+
+        # Save folder paths as instance variables
+        self.graphs_folder = f'graphs/{self.timestamp}'
+        self.params_folder = f'params/{self.timestamp}'
+
+        # Create the folders for saving plots
+        os.makedirs(self.graphs_folder, exist_ok=True)
+        os.makedirs(self.params_folder, exist_ok=True)
 
         # Save the parameters
         self.save_parameters()
@@ -123,7 +123,7 @@ class BaseDPI:
         sorted_params = dict(sorted(params.items()))
 
         # Save the selected parameters to a JSON file
-        with open(f'{self.params_folder}/{self.timestamp}.json', 'w') as file:
+        with open(f'{self.params_folder}/hyper_param.json', 'w') as file:
             json.dump(sorted_params, file, indent=4)
     
     @staticmethod
@@ -142,7 +142,7 @@ class BaseDPI:
                     param.requires_grad = False  # Disable gradient updates for batch norm parameters
 
 
-    def visualize_p(self, all_p_vals, classes):
+    def visualize_p(self, all_p_vals, classes, path):
         # print('-'*100, '\n', ' ' * 45, 'p-values', '\n', '-'*100, sep = '')
         present_label = self.present_label
         all_label = self.all_label
@@ -193,11 +193,11 @@ class BaseDPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_size_power.png', dpi=150)
+        fig.savefig(path, dpi=150)
         plt.close(fig)
         
 
-    def visualize_T(self, all_fake_Cs, classes):
+    def visualize_T(self, all_fake_Cs, classes, path):
         # print('-'*100, '\n', ' ' * 45, 'fake numbers', '\n', '-'*100, sep = '')
         present_label = self.present_label
         all_label = self.all_label
@@ -241,6 +241,6 @@ class BaseDPI:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_fake_T.png', dpi=150)
+        fig.savefig(path, dpi=150)
         plt.close(fig)
 

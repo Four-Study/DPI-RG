@@ -200,7 +200,7 @@ class DPI_VAE:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_size_power.png', dpi=150)
+        fig.savefig(f'{self.graphs_folder}/size_power.png', dpi=150)
         plt.close(fig)
         
 
@@ -248,7 +248,7 @@ class DPI_VAE:
         fig.supylabel('Training', fontsize = 25)
         fig.supxlabel('Validation', fontsize = 25)
         fig.tight_layout()
-        fig.savefig(f'{self.graphs_folder}/{self.timestamp}_fake_T.png', dpi=150)
+        fig.savefig(f'{self.graphs_folder}/fake_T.png', dpi=150)
         plt.close(fig)
 
 class ConvVAE(nn.Module):

@@ -44,7 +44,7 @@ class DPI_ALL(BaseDPI):
 
     def load_inverse_model(self):
         """Load the pre-trained 'I' model for validation."""
-        model_save_file = f'{self.params_folder}/{self.timestamp}_model.pt'
+        model_save_file = f'{self.params_folder}/model.pt'
         netI = I_MNIST(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
@@ -219,7 +219,7 @@ class DPI_ALL(BaseDPI):
         return torch.cat(adjusted_fake_zs)
 
     def save_model(self):
-        model_save_file = f'{self.params_folder}/{self.timestamp}_model.pt'
+        model_save_file = f'{self.params_folder}/model.pt'
         torch.save(self.models['I'].state_dict(), model_save_file)
 
     def validate(self):
@@ -279,8 +279,8 @@ class DPI_ALL(BaseDPI):
             all_p_vals[true_label] = {label: np.array(p_vals[true_label]) for label in self.present_label}
 
         # Visualize the results
-        self.visualize_T(all_fake_Ts, classes=self.train_gen.classes)
-        self.visualize_p(all_p_vals, classes=self.train_gen.classes)
+        self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T.png')
+        self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
 
         print('Finish validation.')
 
@@ -297,7 +297,7 @@ class DPI_ALL(BaseDPI):
         plt.tight_layout()
 
         # Save the plot
-        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_T_train.png')
+        plt.savefig(f'{self.graphs_folder}/T_train.png')
         plt.close()
 
     def save_loss_plots(self, GI_losses, MMD_losses, f_losses, GP_losses):
@@ -325,7 +325,7 @@ class DPI_ALL(BaseDPI):
         plt.legend()
         
         # Save the plot instead of showing it
-        plt.savefig(f'{self.graphs_folder}/{self.timestamp}_losses.png')
+        plt.savefig(f'{self.graphs_folder}/losses.png')
         plt.close()
 
     def generate_fixed_noise(self):
