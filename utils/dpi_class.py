@@ -364,9 +364,92 @@ class DPI_CLASS(BaseDPI):
         self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T.png')
         self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
 
+        all_labels = self.all_label  # Store in a local variable
+        missing_label_set = set(self.missing_label)  # Convert to set for faster lookup
+        cover = {lab: 0.0 for lab in all_labels}  # Initialize coverage for each class
+        error = {lab: 0.0 for lab in all_labels}  # Initialize error for each class
+        total = {lab: 0.0 for lab in all_labels}  # Initialize total counts for each class
+        
+
+        for lab in all_labels:
+            p_vals = all_p_vals[lab]
+            n = len(p_vals[self.present_label[0]])
+
+            for j in range(n):
+                p_set = []
+                # Check if the j-th element of each key-value pair is greater than 0.05
+                for key, value in p_vals.items():
+                    if value[j] > 0.05:  # Ensure j is a valid index
+                        p_set.append(key)  # Record the key
+
+                # Update coverage and error for the current class
+                if lab in missing_label_set:
+                    error[lab] += len(p_set)  # Count the number of True values
+                    if len(p_set) == 0:
+                        cover[lab] += 1
+                else:
+                    error[lab] += abs(len(p_set) - 1) 
+                    if lab in p_set:
+                        cover[lab] += 1
+                total[lab] += 1  # Increment total count for the current class
+
+        # Calculate coverage accuracy and average size error by class
+        self.cover_acc = {lab: cover[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
+        self.avg_error = {lab: error[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
+
+        print("Coverage accuracy and average size error by class:")
+        for lab in self.cover_acc:
+            print(f'Class: {lab}, Coverage Accuracy: {self.cover_acc[lab]:.4f}, Average Size Error: {self.avg_error[lab]:.4f}')
+        
         print('Finish validation.')
 
-    def validate_w_classifier(self, classifier):
+    def train_classifier(self, epochs=20, batch_size=256, learning_rate=0.0001):
+        print(f'Training the classifier started.')
+        device = self.device
+
+        filtered_indices = [i for i, (_, label) in enumerate(self.train_gen) if label in self.present_label]
+        filtered_train_gen = torch.utils.data.Subset(self.train_gen, filtered_indices)
+        train_loader = torch.utils.data.DataLoader(filtered_train_gen, batch_size=batch_size, shuffle=True)
+
+        classifier = I_MNIST(len(self.present_label)).to(device)
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.Adam(classifier.parameters(), lr=learning_rate)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+
+        # Create a mapping from original labels to consecutive labels
+        label_mapping = {original_label: new_label for new_label, original_label in enumerate(self.present_label)}
+        reverse_label_mapping = {new_label: original_label for original_label, new_label in label_mapping.items()}
+
+        for e in range(epochs):
+            running_loss = 0
+            for images, labels in train_loader:
+                images = images.view(images.shape[0], 1, 28, 28).to(device)
+                labels = torch.tensor([label_mapping[label.item()] for label in labels]).to(device)
+
+                optimizer.zero_grad()
+                output = classifier(images)
+                loss = criterion(output, labels)
+                loss.backward()
+                optimizer.step()
+
+                running_loss += loss.item()
+
+            # avg_loss = running_loss / len(train_loader)
+            # print(f'Epoch [{e+1}/{epochs}], Loss: {avg_loss:.4f}')
+            scheduler.step()
+
+        self.classifier = classifier
+        print(f'Training the classifier finished.')
+
+        return reverse_label_mapping
+
+    def validate_w_classifier(self):
+
+        if not hasattr(self, 'classifier'):
+            reverse_label_mapping = self.train_classifier()
+
+        classifier = self.classifier
+
         all_p_vals = {label: {} for label in self.all_label}
         all_fake_Ts = {label: {} for label in self.all_label}
 
@@ -404,7 +487,9 @@ class DPI_CLASS(BaseDPI):
                 x = images.view(images.shape[0], -1).to(self.device)
                 outputs = classifier(x)
                 _, preds = torch.max(outputs, 1)
-                predicted_labels.extend(preds.cpu().numpy())
+                # Map predicted labels back to original labels
+                original_preds = [reverse_label_mapping[pred.item()] for pred in preds]
+                predicted_labels.extend(original_preds)  # Use the original labels
                 all_images.extend(images)
                 all_labels.extend(labels)
 
@@ -457,6 +542,43 @@ class DPI_CLASS(BaseDPI):
         # Visualize the results
         self.visualize_T(all_fake_Ts, classes=self.test_gen.classes, path=f'{self.graphs_folder}/fake_T_2.png')
         self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power_2.png')
+
+        all_labels = self.all_label  # Store in a local variable
+        missing_label_set = set(self.missing_label)  # Convert to set for faster lookup
+        cover = {lab: 0.0 for lab in all_labels}  # Initialize coverage for each class
+        error = {lab: 0.0 for lab in all_labels}  # Initialize error for each class
+        total = {lab: 0.0 for lab in all_labels}  # Initialize total counts for each class
+        
+
+        for lab in all_labels:
+            p_vals = all_p_vals[lab]
+            n = len(p_vals[self.present_label[0]])
+
+            for j in range(n):
+                p_set = []
+                # Check if the j-th element of each key-value pair is greater than 0.05
+                for key, value in p_vals.items():
+                    if value[j] > 0.05:  # Ensure j is a valid index
+                        p_set.append(key)  # Record the key
+
+                # Update coverage and error for the current class
+                if lab in missing_label_set:
+                    error[lab] += len(p_set)  # Count the number of True values
+                    if len(p_set) == 0:
+                        cover[lab] += 1
+                else:
+                    error[lab] += abs(len(p_set) - 1) 
+                    if lab in p_set:
+                        cover[lab] += 1
+                total[lab] += 1  # Increment total count for the current class
+
+        # Calculate coverage accuracy and average size error by class
+        self.cover_acc2 = {lab: cover[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
+        self.avg_error2 = {lab: error[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
+
+        print("Coverage accuracy and average size error by class:")
+        for lab in self.cover_acc2:
+            print(f'Class: {lab}, Coverage Accuracy: {self.cover_acc2[lab]:.4f}, Average Size Error: {self.avg_error2[lab]:.4f}')
 
         print('Finish validation with classifier.')
     
