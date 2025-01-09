@@ -245,6 +245,8 @@ class DPI_CLASS(BaseDPI):
                 p.requires_grad = True
             for p in netG.parameters():
                 p.requires_grad = False
+            # freeze the batch normalization layers
+            self.freeze_batch_norm_layers(netI)
                 
             for _ in range(self.critic_iter_p):
                 images, _ = self.next_batch(data2, train_loader2)
@@ -269,7 +271,7 @@ class DPI_CLASS(BaseDPI):
 
     def get_fake_zs(self, label, train_loader):
         netI = self.models[label]['I']
-        # netI.eval()  # Set the model to evaluation mode
+        netI.eval()  # Set the model to evaluation mode
         fake_zs = []
         with torch.no_grad():
             for x, _ in train_loader:
@@ -311,6 +313,8 @@ class DPI_CLASS(BaseDPI):
 
         all_p_vals = {label: {} for label in self.all_label}
         all_fake_Ts = {label: {} for label in self.all_label}
+        original_p_vals = np.ones((len(self.test_gen), len(self.present_label)))
+        original_p_sets = np.ones_like(original_p_vals)
     
         # Calculate T_trains for present labels first
         if self.validation_only:
@@ -329,24 +333,26 @@ class DPI_CLASS(BaseDPI):
         # Create a single test loader for all classes
         test_loader = DataLoader(self.test_gen, batch_size=1, shuffle=False)
 
-        for label in self.present_label:
+        for lab_idx, label in enumerate(self.present_label):
             T_train = self.T_trains[label]
             em_len = len(T_train)
             
             # Use the preloaded "I" model from self.models
             netI = self.models[label]['I']
-            # netI.eval()  # Set to evaluation mode
+            netI.eval()  # Set to evaluation mode
 
             fake_Ts = {lab: [] for lab in self.all_label}
             p_vals = {lab: [] for lab in self.all_label}
 
-            for batch in test_loader:
+            for idxs, batch in enumerate(test_loader):
                 images, y = batch
                 x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
                 fake_z = netI(x)
                 T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
                 
                 p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
+                original_p_vals[idxs, lab_idx] = p.cpu().numpy()
+                original_p_sets[idxs, lab_idx] = (p.cpu().numpy() > 0.05).astype(int)
 
                 # Store results for each true label
                 for true_label in self.all_label:
@@ -365,7 +371,6 @@ class DPI_CLASS(BaseDPI):
         self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power.png')
 
         all_labels = self.all_label  # Store in a local variable
-        missing_label_set = set(self.missing_label)  # Convert to set for faster lookup
         cover = {lab: 0.0 for lab in all_labels}  # Initialize coverage for each class
         error = {lab: 0.0 for lab in all_labels}  # Initialize error for each class
         total = {lab: 0.0 for lab in all_labels}  # Initialize total counts for each class
@@ -383,7 +388,7 @@ class DPI_CLASS(BaseDPI):
                         p_set.append(key)  # Record the key
 
                 # Update coverage and error for the current class
-                if lab in missing_label_set:
+                if lab in self.missing_label:
                     error[lab] += len(p_set)  # Count the number of True values
                     if len(p_set) == 0:
                         cover[lab] += 1
@@ -402,6 +407,8 @@ class DPI_CLASS(BaseDPI):
             print(f'Class: {lab}, Coverage Accuracy: {self.cover_acc[lab]:.4f}, Average Size Error: {self.avg_error[lab]:.4f}')
         
         print('Finish validation.')
+
+        return original_p_vals, original_p_sets
 
     def train_classifier(self, epochs=20, batch_size=256, learning_rate=0.0001):
         print(f'Training the classifier started.')
@@ -544,7 +551,6 @@ class DPI_CLASS(BaseDPI):
         self.visualize_p(all_p_vals, classes=self.test_gen.classes, path=f'{self.graphs_folder}/size_power_2.png')
 
         all_labels = self.all_label  # Store in a local variable
-        missing_label_set = set(self.missing_label)  # Convert to set for faster lookup
         cover = {lab: 0.0 for lab in all_labels}  # Initialize coverage for each class
         error = {lab: 0.0 for lab in all_labels}  # Initialize error for each class
         total = {lab: 0.0 for lab in all_labels}  # Initialize total counts for each class
@@ -562,7 +568,7 @@ class DPI_CLASS(BaseDPI):
                         p_set.append(key)  # Record the key
 
                 # Update coverage and error for the current class
-                if lab in missing_label_set:
+                if lab in self.missing_label:
                     error[lab] += len(p_set)  # Count the number of True values
                     if len(p_set) == 0:
                         cover[lab] += 1

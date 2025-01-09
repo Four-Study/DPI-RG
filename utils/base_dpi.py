@@ -61,7 +61,8 @@ class BaseDPI:
         os.makedirs(self.params_folder, exist_ok=True)
 
         # Save the parameters
-        self.save_parameters()
+        if timestamp is None:
+            self.save_parameters()
 
         # Initialize or load models
         self.setup_models()
