@@ -331,7 +331,7 @@ class DPI_CLASS(BaseDPI):
                 self.T_trains[label] = T_train
 
         # Create a single test loader for all classes
-        test_loader = DataLoader(self.test_gen, batch_size=1, shuffle=False)
+        test_loader = DataLoader(self.test_gen, batch_size=200, shuffle=False)
 
         for lab_idx, label in enumerate(self.present_label):
             T_train = self.T_trains[label]
@@ -344,15 +344,21 @@ class DPI_CLASS(BaseDPI):
             fake_Ts = {lab: [] for lab in self.all_label}
             p_vals = {lab: [] for lab in self.all_label}
 
-            for idxs, batch in enumerate(test_loader):
+            for batch_idx, batch in enumerate(test_loader):
+                # Calculate the start and end index for the current batch
+                start_idx = batch_idx * test_loader.batch_size
+                end_idx = start_idx + len(batch[0]) 
+
                 images, y = batch
                 x = images.view(-1, self.nc, self.img_size, self.img_size).to(self.device)
                 fake_z = netI(x)
                 T_batch = torch.sqrt(torch.sum(fake_z ** 2, 1) + 1)
                 
                 p = torch.tensor([torch.sum(T_train > t) / em_len for t in T_batch])
-                original_p_vals[idxs, lab_idx] = p.cpu().numpy()
-                original_p_sets[idxs, lab_idx] = (p.cpu().numpy() > 0.05).astype(int)
+                
+                # Store p values and sets for each class
+                original_p_vals[start_idx:end_idx, lab_idx] = p.cpu().numpy()  # Store the entire row for the current batch
+                original_p_sets[start_idx:end_idx, lab_idx] = (p.cpu().numpy() > 0.05).astype(int)  # Convert to binary based on threshold
 
                 # Store results for each true label
                 for true_label in self.all_label:
