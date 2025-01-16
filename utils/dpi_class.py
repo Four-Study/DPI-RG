@@ -102,9 +102,6 @@ class DPI_CLASS(BaseDPI):
                 # Compute powers and new sample sizes
                 sample_sizes = self.compute_sample_sizes(T_train, label)
 
-                # Freeze batch normalization layers before the second round of training
-                # self.freeze_batch_norm_layers(netI)
-
                 # Second round of training with new sample sizes
                 self.train_label(
                     label, netI, netG, netf, optim_I, optim_G, optim_f,
@@ -245,8 +242,9 @@ class DPI_CLASS(BaseDPI):
                 p.requires_grad = True
             for p in netG.parameters():
                 p.requires_grad = False
-            # freeze the batch normalization layers
-            self.freeze_batch_norm_layers(netI)
+
+            # # freeze the batch normalization layers
+            # self.freeze_batch_norm_layers(netI)
                 
             for _ in range(self.critic_iter_p):
                 images, _ = self.next_batch(data2, train_loader2)
@@ -271,7 +269,7 @@ class DPI_CLASS(BaseDPI):
 
     def get_fake_zs(self, label, train_loader):
         netI = self.models[label]['I']
-        netI.eval()  # Set the model to evaluation mode
+        # netI.eval() 
         fake_zs = []
         with torch.no_grad():
             for x, _ in train_loader:
@@ -288,7 +286,7 @@ class DPI_CLASS(BaseDPI):
                 train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=False)
 
                 netI = self.models[label]['I']
-                netI.eval()  # Set the model to evaluation mode
+                # netI.eval()  
                 p_vals = torch.zeros(len(idxs))
                 with torch.no_grad():
                     for i, (x, _) in enumerate(train_loader):
@@ -339,7 +337,7 @@ class DPI_CLASS(BaseDPI):
             
             # Use the preloaded "I" model from self.models
             netI = self.models[label]['I']
-            netI.eval()  # Set to evaluation mode
+            netI.eval()  
 
             fake_Ts = {lab: [] for lab in self.all_label}
             p_vals = {lab: [] for lab in self.all_label}
@@ -480,7 +478,6 @@ class DPI_CLASS(BaseDPI):
                 T_train = torch.sqrt(torch.sum(fake_zs ** 2, dim=1) + 1)
                 self.T_trains[label] = T_train
 
-        # Set classifier to evaluation mode
         classifier.eval()
 
         # First, classify all images
