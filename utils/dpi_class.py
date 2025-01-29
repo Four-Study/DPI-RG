@@ -415,7 +415,7 @@ class DPI_CLASS(BaseDPI):
         return original_p_vals, original_p_sets
 
     def train_classifier(self, epochs=20, batch_size=256, learning_rate=0.0001):
-        print(f'Training the classifier started.')
+        
         device = self.device
 
         filtered_indices = [i for i, (_, label) in enumerate(self.train_gen) if label in self.present_label]
@@ -450,9 +450,42 @@ class DPI_CLASS(BaseDPI):
             scheduler.step()
 
         self.classifier = classifier
-        print(f'Training the classifier finished.')
+
+        # Calculate accuracy by class
+        self.calculate_accuracy(reverse_label_mapping)
+
 
         return reverse_label_mapping
+    
+    def calculate_accuracy(self, reverse_label_mapping):
+        """Calculate and print accuracy by class."""
+        all_images = []
+        all_labels = []
+        predicted_labels = []
+        
+        with torch.no_grad():
+            for images, labels in DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False):
+                # Filter for present labels
+                mask = torch.tensor([label in self.present_label for label in labels])
+                if not mask.any():
+                    continue
+                
+                images = images[mask]
+                labels = labels[mask]
+                
+                x = images.view(images.shape[0], -1).to(self.device)
+                outputs = self.classifier(x)
+                _, preds = torch.max(outputs, 1)
+                # Map predicted labels back to original labels
+                original_preds = [reverse_label_mapping[pred.item()] for pred in preds]
+                predicted_labels.extend(original_preds)  # Use the original labels
+                all_images.extend(images)
+                all_labels.extend(labels)
+
+        # Calculate accuracy
+        correct = sum(p == l.item() for p, l in zip(predicted_labels, all_labels))
+        accuracy = correct / len(all_labels) * 100 if all_labels else 0
+        print(f'Accuracy by class: {accuracy:.2f}%')
 
     def validate_w_classifier(self):
 
