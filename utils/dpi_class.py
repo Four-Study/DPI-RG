@@ -459,9 +459,12 @@ class DPI_CLASS(BaseDPI):
     
     def calculate_accuracy(self, reverse_label_mapping):
         """Calculate and print accuracy by class."""
-        all_images = []
         all_labels = []
         predicted_labels = []
+        
+        # Initialize dictionaries with all possible labels
+        label_correct = {label: 0 for label in self.all_label}
+        label_total = {label: 0 for label in self.all_label}
         
         with torch.no_grad():
             for images, labels in DataLoader(self.test_gen, batch_size=self.batch_size, shuffle=False):
@@ -476,16 +479,28 @@ class DPI_CLASS(BaseDPI):
                 x = images.view(images.shape[0], -1).to(self.device)
                 outputs = self.classifier(x)
                 _, preds = torch.max(outputs, 1)
+                
                 # Map predicted labels back to original labels
                 original_preds = [reverse_label_mapping[pred.item()] for pred in preds]
-                predicted_labels.extend(original_preds)  # Use the original labels
-                all_images.extend(images)
-                all_labels.extend(labels)
+                original_labels = [reverse_label_mapping[label.item()] for label in labels]
+                
+                predicted_labels.extend(original_preds)
+                all_labels.extend(original_labels)
+                
+                # Track correct predictions per class
+                for true_label, pred_label in zip(original_labels, original_preds):
+                    label_total[true_label] += 1
+                    if true_label == pred_label:
+                        label_correct[true_label] += 1
 
-        # Calculate accuracy
-        correct = sum(p == l.item() for p, l in zip(predicted_labels, all_labels))
-        accuracy = correct / len(all_labels) * 100 if all_labels else 0
-        print(f'Accuracy by class: {accuracy:.2f}%')
+        # Calculate accuracy per class
+        class_accuracies = {label: (label_correct[label] / label_total[label] * 100 if label_total[label] > 0 else 0)
+                            for label in self.all_label}
+        
+        # Print results
+        for label in self.all_label:
+            print(f'Accuracy for class {label}: {class_accuracies[label]:.2f}%')
+
 
     def validate_w_classifier(self):
 
