@@ -18,7 +18,14 @@ def get_dataset(dataset_name, root="./datasets", train=True, transform=None, dow
     dataset: A torchvision dataset
     """
     if transform is None:
-        transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
+        # Apply data augmentation
+        transform = transforms.Compose([
+            transforms.RandomRotation(10),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,))
+        ])
+        # transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
     
     dataset_class = getattr(datasets, dataset_name)
     dataset = dataset_class(root=root, train=train, transform=transform, download=download)

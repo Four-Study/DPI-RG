@@ -1,10 +1,10 @@
 import time
 import seaborn as sns
 import torch.optim as optim
-import torch.nn.functional as F
 import torchvision.utils as vutils
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
+from torch.amp import autocast, GradScaler
 from .base_dpi import BaseDPI
 from .losses import *
 from .mnist import I_MNIST, G_MNIST, f_MNIST
@@ -414,48 +414,63 @@ class DPI_CLASS(BaseDPI):
 
         return original_p_vals, original_p_sets
 
-    def train_classifier(self, epochs=20, batch_size=256, learning_rate=0.0001):
-        
+    def train_classifier(self, epochs=10, batch_size=256, learning_rate=0.0002):
         device = self.device
 
+        # Filter dataset
         filtered_indices = [i for i, (_, label) in enumerate(self.train_gen) if label in self.present_label]
-        filtered_train_gen = torch.utils.data.Subset(self.train_gen, filtered_indices)
-        train_loader = torch.utils.data.DataLoader(filtered_train_gen, batch_size=batch_size, shuffle=True)
+        filtered_train_gen = Subset(self.train_gen, filtered_indices)
+        train_loader = DataLoader(filtered_train_gen, batch_size=batch_size, shuffle=True)
 
+        # Initialize classifier
         classifier = I_MNIST(len(self.present_label)).to(device)
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(classifier.parameters(), lr=learning_rate)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
-        # Create a mapping from original labels to consecutive labels
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.AdamW(classifier.parameters(), lr=learning_rate, weight_decay=1e-4)  # AdamW for better generalization
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+        
+        scaler = GradScaler('cuda')  # Mixed Precision Training
+
         label_mapping = {original_label: new_label for new_label, original_label in enumerate(self.present_label)}
         reverse_label_mapping = {new_label: original_label for original_label, new_label in label_mapping.items()}
 
         for e in range(epochs):
+            classifier.train()
             running_loss = 0
+            correct, total = 0, 0
+
             for images, labels in train_loader:
                 images = images.view(images.shape[0], 1, 28, 28).to(device)
                 labels = torch.tensor([label_mapping[label.item()] for label in labels]).to(device)
 
                 optimizer.zero_grad()
-                output = classifier(images)
-                loss = criterion(output, labels)
-                loss.backward()
-                optimizer.step()
+                with autocast('cuda'):  # Mixed Precision Training
+                    output = classifier(images)
+                    loss = criterion(output, labels)
+
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
 
                 running_loss += loss.item()
+                _, predicted = torch.max(output, 1)
+                correct += (predicted == labels).sum().item()
+                total += labels.size(0)
 
-            # avg_loss = running_loss / len(train_loader)
-            # print(f'Epoch [{e+1}/{epochs}], Loss: {avg_loss:.4f}')
-            scheduler.step()
+            avg_loss = running_loss / len(train_loader)
+            accuracy = correct / total * 100
+            print(f'Epoch [{e+1}/{epochs}], Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
+
+            scheduler.step(avg_loss)
 
         self.classifier = classifier
 
         # Calculate accuracy by class
         self.calculate_accuracy(reverse_label_mapping)
 
-
         return reverse_label_mapping
+    
+
     
     def calculate_accuracy(self, reverse_label_mapping):
         """Calculate and print accuracy by class."""
@@ -498,8 +513,10 @@ class DPI_CLASS(BaseDPI):
                             for label in self.all_label}
         
         # Print results
+        print('-'*10 + 'Classifier Test Accuracy' + '-'*10)
         for label in self.all_label:
-            print(f'Accuracy for class {label}: {class_accuracies[label]:.2f}%')
+            print(f'Class {label}: {class_accuracies[label]:.2f}%')
+        print('-'*45)
 
 
     def validate_w_classifier(self):
@@ -633,11 +650,13 @@ class DPI_CLASS(BaseDPI):
         self.cover_acc2 = {lab: cover[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
         self.avg_error2 = {lab: error[lab] / total[lab] if total[lab] > 0 else 0 for lab in all_labels}
 
+        print('-'*50)
         print("Coverage accuracy and average size error by class:")
         for lab in self.cover_acc2:
-            print(f'Class: {lab}, Coverage Accuracy: {self.cover_acc2[lab]:.4f}, Average Size Error: {self.avg_error2[lab]:.4f}')
+            print(f'Class {lab}, Coverage Accuracy: {self.cover_acc2[lab]:.4f}, Average Size Error: {self.avg_error2[lab]:.4f}')
 
         print('Finish validation with classifier.')
+        print('-'*50)
     
     def visualize_T_trains(self):
         """Visualize the distribution of T_trains for all labels in a single row."""
