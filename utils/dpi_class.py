@@ -414,7 +414,7 @@ class DPI_CLASS(BaseDPI):
 
         return original_p_vals, original_p_sets
 
-    def train_classifier(self, epochs=10, batch_size=256, learning_rate=0.0002):
+    def train_classifier(self, epochs=20, batch_size=256, learning_rate=0.0004):
         device = self.device
 
         # Filter dataset
