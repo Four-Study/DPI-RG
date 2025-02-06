@@ -13,11 +13,11 @@ class BaseDPI:
     def __init__(self, dataset_name, lr_G, lr_I, lr_f, weight_decay, batch_size, 
                  lambda_mmd, lambda_gp, eta, std, present_label, missing_label=[], 
                  img_size=28, nc=1, critic_iter=3, critic_iter_f=3, decay_epochs=None, 
-                 gamma=0.2, device=None, timestamp=None):
+                 gamma=0.2, balance=True, device=None, timestamp=None):
         # Common initialization code
         self.dataset_name = dataset_name
-        self.train_gen = get_dataset(dataset_name, train=True)
-        self.test_gen = get_dataset(dataset_name, train=False)
+        self.train_gen = get_dataset(dataset_name, balance=balance, train=True)
+        self.test_gen = get_dataset(dataset_name, balance=balance, train=False)
         self.lr_I = lr_I
         self.lr_G = lr_G
         self.lr_f = lr_f
