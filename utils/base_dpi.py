@@ -8,11 +8,13 @@ import json
 import torch
 import torch.nn as nn
 from .dataloader import get_dataset
+from .mnist import I_MNIST, G_MNIST, f_MNIST
+from .cifar10 import I_CIFAR10, G_CIFAR10, f_CIFAR10
 
 class BaseDPI:
     def __init__(self, dataset_name, lr_G, lr_I, lr_f, weight_decay, batch_size, 
                  lambda_mmd, lambda_gp, eta, std, present_label, missing_label=[], 
-                 img_size=28, nc=1, critic_iter=3, critic_iter_f=3, decay_epochs=None, 
+                 critic_iter=3, critic_iter_f=3, decay_epochs=None, 
                  gamma=0.2, balance=True, device=None, timestamp=None):
         # Common initialization code
         self.dataset_name = dataset_name
@@ -27,8 +29,6 @@ class BaseDPI:
         self.lambda_gp = lambda_gp
         self.eta = eta
         self.std = std
-        self.img_size = img_size
-        self.nc = nc
         self.critic_iter = critic_iter
         self.critic_iter_f = critic_iter_f
         self.decay_epochs = decay_epochs
@@ -60,9 +60,30 @@ class BaseDPI:
         os.makedirs(self.graphs_folder, exist_ok=True)
         os.makedirs(self.params_folder, exist_ok=True)
 
+        # Determine model suffix once based on dataset_name
+        if self.dataset_name in ["MNIST", "FashionMNIST"]:
+            self.model_suffix = "MNIST"
+            self.nc = 1
+            self.img_size = 28
+        elif self.dataset_name == "CIFAR10":
+            self.model_suffix = "CIFAR10"
+            self.nc = 3
+            self.img_size = 32
+        else:
+            raise ValueError(f"Unsupported dataset: {self.dataset_name}")
+        
         # Save the parameters
         if timestamp is None:
             self.save_parameters()
+        
+        # Retrieve model classes once and store them as instance attributes
+        self.netI_class = globals().get(f"I_{self.model_suffix}")
+        self.netG_class = globals().get(f"G_{self.model_suffix}")
+        self.netf_class = globals().get(f"f_{self.model_suffix}")
+
+        # Ensure all required models are found
+        if not all([self.netI_class, self.netG_class, self.netf_class]):
+            raise ValueError(f"Model classes I_{self.model_suffix}, G_{self.model_suffix}, f_{self.model_suffix} not found.")
 
         # Initialize or load models
         self.setup_models()

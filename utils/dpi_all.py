@@ -7,7 +7,6 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from .base_dpi import BaseDPI
 from .losses import *
-from .mnist import I_MNIST, G_MNIST, f_MNIST
 from .dataloader import get_data_loader
 
 
@@ -30,9 +29,9 @@ class DPI_ALL(BaseDPI):
 
     def initialize_model(self):
         """Initialize a single set of 'I', 'G', 'f' models for training."""
-        netI = I_MNIST(nz=self.z_dim).to(self.device)
-        netG = G_MNIST(nz=self.z_dim).to(self.device)
-        netf = f_MNIST(nz=self.z_dim).to(self.device)
+        netI = self.netI_class(nz=self.z_dim).to(self.device)
+        netG = self.netG_class(nz=self.z_dim).to(self.device)
+        netf = self.netf_class(nz=self.z_dim).to(self.device)
         netI, netG, netf = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netf)
 
         self.models = {'I': netI, 'G': netG, 'f': netf}
@@ -45,7 +44,7 @@ class DPI_ALL(BaseDPI):
     def load_inverse_model(self):
         """Load the pre-trained 'I' model for validation."""
         model_save_file = f'{self.params_folder}/model.pt'
-        netI = I_MNIST(nz=self.z_dim).to(self.device)
+        netI = self.netI_class(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
             netI.load_state_dict(torch.load(model_save_file))

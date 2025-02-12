@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader, Subset
 from torch.amp import autocast, GradScaler
 from .base_dpi import BaseDPI
 from .losses import *
-from .mnist import I_MNIST, G_MNIST, f_MNIST
 from .dataloader import get_data_loader
 
 
@@ -35,9 +34,11 @@ class DPI_CLASS(BaseDPI):
 
     def initialize_model(self, label):
         """Initialize 'I', 'G', 'f' models for a given label for training."""
-        netI = I_MNIST(nz=self.z_dim).to(self.device)
-        netG = G_MNIST(nz=self.z_dim).to(self.device)
-        netf = f_MNIST(nz=self.z_dim).to(self.device)
+
+        # Initialize models
+        netI = self.netI_class(nz=self.z_dim).to(self.device)
+        netG = self.netG_class(nz=self.z_dim).to(self.device)
+        netf = self.netf_class(nz=self.z_dim).to(self.device)
         netI, netG, netf = nn.DataParallel(netI), nn.DataParallel(netG), nn.DataParallel(netf)
 
         self.models[label] = {'I': netI, 'G': netG, 'f': netf}
@@ -50,7 +51,7 @@ class DPI_CLASS(BaseDPI):
     def load_inverse_model(self, label):
         """Load the pre-trained 'I' model for validation."""
         model_save_file = f'{self.params_folder}/class{label}.pt'
-        netI = I_MNIST(nz=self.z_dim).to(self.device)
+        netI = self.netI_class(nz=self.z_dim).to(self.device)
         netI = nn.DataParallel(netI)
         try:
             netI.load_state_dict(torch.load(model_save_file, weights_only=True))
@@ -423,7 +424,7 @@ class DPI_CLASS(BaseDPI):
         train_loader = DataLoader(filtered_train_gen, batch_size=batch_size, shuffle=True)
 
         # Initialize classifier
-        classifier = I_MNIST(len(self.present_label)).to(device)
+        classifier = self.netI_class(len(self.present_label)).to(device)
 
         criterion = nn.CrossEntropyLoss()
         optimizer = optim.AdamW(classifier.parameters(), lr=learning_rate, weight_decay=1e-4)  # AdamW for better generalization

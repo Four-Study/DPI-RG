@@ -155,9 +155,9 @@ class G_CIFAR10(nn.Module):
 #             output = self.main(input)
 #         return output.view(-1, 1).squeeze(1)
     
-class D_CIFAR10(nn.Module):
+class f_CIFAR10(nn.Module):
     def __init__(self, nz, ndf = 16, power = 6):
-        super(D_CIFAR10, self).__init__()
+        super(f_CIFAR10, self).__init__()
         self.power = power
         layers = [
             # input is (nz) 
