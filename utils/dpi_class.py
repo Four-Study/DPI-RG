@@ -435,6 +435,7 @@ class DPI_CLASS(BaseDPI):
         label_mapping = {original_label: new_label for new_label, original_label in enumerate(self.present_label)}
         reverse_label_mapping = {new_label: original_label for original_label, new_label in label_mapping.items()}
 
+        print(f"{'-'*50}\nStart training the classifier\n{'-'*50}")  
         for e in range(epochs):
             classifier.train()
             running_loss = 0
@@ -465,6 +466,7 @@ class DPI_CLASS(BaseDPI):
             scheduler.step(avg_loss)
 
         self.classifier = classifier
+        print(f"{'-'*50}\nFinish training the classifier\n{'-'*50}")  
 
         # Calculate accuracy by class
         self.calculate_accuracy(reverse_label_mapping)
